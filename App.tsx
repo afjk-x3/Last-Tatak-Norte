@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { PRODUCTS } from './constants'; 
@@ -671,7 +672,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
             if (success) {
                 alert(`Seller ${actionText} successful.`);
                 fetchApprovedSellers().then(setSellersList);
-                onRefreshGlobalData(); // Refresh to update product visibility
+                await onRefreshGlobalData(); // Refresh to update product visibility
             } else {
                 alert(`Failed to ${action} seller.`);
             }
@@ -684,7 +685,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
         if (success) {
             alert(`Seller suspended for ${days} days.`);
             fetchApprovedSellers().then(setSellersList);
-            onRefreshGlobalData();
+            await onRefreshGlobalData();
             setIsSuspendModalOpen(false);
             setSellerToSuspend(null);
         } else {
@@ -705,7 +706,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
         
         if (success) {
             showNotification(`Product ${status} successfully.`, 'success');
-            onRefreshGlobalData();
+            await onRefreshGlobalData();
             setIsProductActionModalOpen(false);
             setProductAction(null);
         } else {
@@ -1201,7 +1202,8 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                                      const success = await approveOrderCancellation(order.id);
                                                      if (success) {
                                                         setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Cancelled' } : o));
-                                                        fetchOrders('seller', user.uid).then(setOrders);
+                                                        const data = await fetchOrders('seller', user.uid);
+                                                        setOrders(data);
                                                      } else {
                                                         alert("Failed to cancel order. Please try again.");
                                                      }
@@ -1225,7 +1227,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                 onClose={() => setIsAddProductOpen(false)} 
                 onAddProduct={async (data: any) => {
                     await addProduct(data);
-                    onRefreshGlobalData(); 
+                    await onRefreshGlobalData(); 
                 }} 
                 user={user}
                 editingProduct={editingProduct}
@@ -1241,7 +1243,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                 }}
                 onDelete={async (id: string) => {
                     await deleteProduct(id);
-                    onRefreshGlobalData();
+                    await onRefreshGlobalData();
                 }}
             />
             
@@ -1898,6 +1900,30 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
     const [isTrackingOpen, setIsTrackingOpen] = useState(false);
     const [selectedTrackingOrder, setSelectedTrackingOrder] = useState<Order | null>(null);
 
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    const allTabs = [
+        { id: 'orders', label: 'My Orders', icon: <Package className="w-5 h-5" />, roles: ['customer'] },
+        { id: 'shop', label: 'Shop Profile', icon: <Store className="w-5 h-5" />, roles: ['seller'] },
+        { id: 'personal', label: isAdmin ? 'Personal Information' : 'Profile Settings', icon: isAdmin ? <User className="w-5 h-5" /> : <UserCircle className="w-5 h-5" />, roles: ['customer', 'seller', 'admin'] },
+        { id: 'addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" />, roles: ['customer'] },
+        { id: 'payment', label: 'Payment Methods', icon: <CreditCard className="w-5 h-5" />, roles: ['customer'] },
+        { id: 'security', label: isSellerOrAdmin ? 'Security & Account' : 'Security & Account', icon: <Lock className="w-5 h-5" />, roles: ['customer', 'seller', 'admin'] },
+    ];
+
+    const currentRole = user?.role || 'customer';
+    const activeTabs = allTabs.filter(t => t.roles.includes(currentRole));
+    const activeTabData = activeTabs.find(t => t.id === activeTab) || activeTabs[0];
+
+    const tabsCount = activeTabs.length;
+
     // Shop Settings State
     const [shopName, setShopName] = useState(user?.shopName || '');
     const [shopImageFile, setShopImageFile] = useState<File | null>(null);
@@ -2024,7 +2050,7 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                 const url = await uploadProfileImage(user.uid, file);
                 if (url) {
                     await updateUserProfile(user.uid, { photoURL: url });
-                    onUpdateProfile();
+                    await onUpdateProfile();
                     showSuccess("Profile photo updated successfully!");
                 } else {
                      setErrorMessage("Failed to upload image. Please check your connection.");
@@ -2177,7 +2203,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
         if(!orderToCancel || !user) return;
         setIsCancelling(true);
         await requestOrderCancellation(orderToCancel.id, reason);
-        fetchOrders('customer', user.uid).then(setOrders);
+        const data = await fetchOrders('customer', user.uid);
+        setOrders(data);
         setIsCancelling(false);
         setIsCancelOrderModalOpen(false);
         setOrderToCancel(null);
@@ -2242,20 +2269,28 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
 
     if (!user) return <div className="p-20 text-center">Please log in to view profile.</div>;
 
-    const TabButton = ({ id, label, icon }: any) => (
-        <button 
-            onClick={() => setActiveTab(id)}
-            className={`w-full text-left px-6 py-4 rounded-xl flex items-center gap-4 font-bold transition-all duration-200 mb-2 ${
-                activeTab === id 
-                ? 'bg-brand-blue text-white shadow-lg shadow-blue-900/10 translate-x-2' 
-                : 'text-stone-600 hover:bg-white hover:text-brand-blue hover:shadow-sm'
-            }`}
-        >
-            {icon}
-            <span>{label}</span>
-            {id === 'orders' && <ChevronRight className={`w-4 h-4 ml-auto transition-transform ${activeTab === id ? 'rotate-90' : ''}`} />}
-        </button>
-    );
+    const TabButton = ({ id, label, icon }: any) => {
+        const isActive = activeTab === id;
+        
+        return (
+            <button 
+                onClick={() => {
+                    setActiveTab(id);
+                    setIsMobileMenuOpen(false);
+                }}
+                className={`w-full text-left px-6 py-4 rounded-xl flex items-center gap-4 font-bold transition-all duration-200 mb-2 group ${
+                    isActive 
+                    ? 'bg-brand-blue text-white shadow-lg shadow-blue-900/10 lg:translate-x-2' 
+                    : 'text-stone-600 hover:bg-white hover:text-brand-blue hover:shadow-sm bg-stone-50 lg:bg-transparent'
+                }`}
+            >
+                <div className={`${isActive ? 'text-white' : 'text-stone-400 group-hover:text-brand-blue'}`}>
+                    {icon}
+                </div>
+                <span className="flex-1">{label}</span>
+            </button>
+        );
+    };
 
     // Profile render logic...
     return (
@@ -2322,26 +2357,47 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                      <div className="lg:col-span-3">
                         <div className="sticky top-24">
                             <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-4 pl-4">Account Menu</h3>
-                            {isAdmin ? (
-                                <>
-                                    <TabButton id="personal" label="Personal Information" icon={<User className="w-5 h-5" />} />
-                                    <TabButton id="security" label="Security & Password" icon={<Lock className="w-5 h-5" />} />
-                                </>
-                            ) : isSeller ? (
-                                <>
-                                    <TabButton id="shop" label="Shop Profile" icon={<Store className="w-5 h-5" />} />
-                                    <TabButton id="personal" label="Personal Information" icon={<User className="w-5 h-5" />} />
-                                    <TabButton id="security" label="Security & Account" icon={<Lock className="w-5 h-5" />} />
-                                </>
-                            ) : (
-                                <>
-                                    <TabButton id="orders" label="My Orders" icon={<Package className="w-5 h-5" />} />
-                                    <TabButton id="personal" label="Profile Settings" icon={<UserCircle className="w-5 h-5" />} />
-                                    <TabButton id="addresses" label="Addresses" icon={<MapPin className="w-5 h-5" />} />
-                                    <TabButton id="payment" label="Payment Methods" icon={<CreditCard className="w-5 h-5" />} />
-                                    <TabButton id="security" label="Security & Account" icon={<Lock className="w-5 h-5" />} />
-                                </>
-                            )}
+                            
+                            {/* Mobile Trigger */}
+                            <button 
+                                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                                className="lg:hidden w-full text-left px-6 py-4 rounded-xl flex items-center gap-4 font-bold bg-white text-stone-900 shadow-sm border border-stone-200 mb-4 transition-all active:scale-[0.98]"
+                            >
+                                <div className="text-brand-blue">
+                                    {activeTabData.icon}
+                                </div>
+                                <span className="flex-1 truncate">{activeTabData.label}</span>
+                                <div className="p-1 bg-stone-50 rounded-lg">
+                                    <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-300 ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
+                                </div>
+                            </button>
+
+                            {/* Collapsible Tabs Container */}
+                            <motion.div
+                                initial={false}
+                                animate={isMobileMenuOpen || isDesktop ? "open" : "closed"}
+                                variants={{
+                                    open: { 
+                                        height: "auto", 
+                                        opacity: 1,
+                                        display: "block",
+                                        transition: { type: "spring", stiffness: 300, damping: 30 }
+                                    },
+                                    closed: { 
+                                        height: 0, 
+                                        opacity: 0,
+                                        transitionEnd: { display: "none" },
+                                        transition: { duration: 0.2, ease: "easeInOut" }
+                                    }
+                                }}
+                                className="lg:!h-auto lg:!opacity-100 lg:!display-block overflow-hidden lg:overflow-visible"
+                            >
+                                <div className="pb-4 lg:pb-0">
+                                    {activeTabs.map(tab => (
+                                        <TabButton key={tab.id} {...tab} />
+                                    ))}
+                                </div>
+                            </motion.div>
                         </div>
                     </div>
 
@@ -4461,7 +4517,9 @@ export const App: React.FC = () => {
       setProductsError(null);
       try {
           const fetched = await fetchProducts();
-          if(fetched && fetched.length > 0) setProducts(fetched);
+          if (fetched) {
+              setProducts(fetched);
+          }
       } catch (err: any) {
           console.error("Failed to load products:", err);
           let errorMsg = err.message || "Failed to fetch products.";
@@ -4476,12 +4534,19 @@ export const App: React.FC = () => {
   };
 
   const handleRefreshUser = async () => {
-      if (auth.currentUser) {
-          const profile = await getUserProfile(auth.currentUser.uid);
+      const u = auth.currentUser;
+      if (u) {
+          const profile = await getUserProfile(u.uid);
           if (profile) {
               setUser(prev => {
                   if (!prev) return null;
-                  return { ...prev, ...profile };
+                  return {
+                      ...prev,
+                      ...profile,
+                      name: profile.displayName || u.displayName || prev.name,
+                      email: u.email || prev.email,
+                      emailVerified: u.emailVerified
+                  } as UserState;
               });
           }
       }
