@@ -3,9 +3,9 @@ import { GoogleGenAI, Chat } from "@google/genai";
 let chatSession: Chat | null = null;
 
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.error("API Key not found");
+    console.error("GEMINI_API_KEY not found");
     return null;
   }
   return new GoogleGenAI({ apiKey });

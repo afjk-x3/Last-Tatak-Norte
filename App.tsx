@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { PRODUCTS } from './constants'; 
@@ -560,11 +560,20 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
 
     useEffect(() => {
         if (user) {
-            fetchOrders('seller', user.uid).then(setOrders);
+            fetchOrders('seller', user.uid).then(data => {
+                const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
+                setOrders(unique);
+            });
 
             if (isAdmin) {
-                fetchSellerApplications('pending').then(setSellerApps);
-                fetchApprovedSellers().then(setSellersList);
+                fetchSellerApplications('pending').then(data => {
+                    const unique = Array.from(new Map(data.map(a => [a.id, a])).values());
+                    setSellerApps(unique);
+                });
+                fetchApprovedSellers().then(data => {
+                    const unique = Array.from(new Map(data.map(s => [s.uid, s])).values());
+                    setSellersList(unique);
+                });
             }
         }
     }, [user, isAdmin]);
@@ -1171,7 +1180,13 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                      <div key={idx} className="flex justify-between text-sm"><span>{item.quantity}x {item.name} {item.selectedVariation && `(${item.selectedVariation.name})`}</span><span>₱{(item.price * item.quantity).toLocaleString()}</span></div>
                                  ))}
                              </div>
-                             {order.status === 'Processing' && <button onClick={async () => { await updateOrderTracking(order.id); fetchOrders('seller', user.uid).then(setOrders); }} className="w-full py-2 bg-brand-blue text-white rounded-lg font-bold">Mark as Shipped</button>}
+                             {order.status === 'Processing' && <button onClick={async () => { 
+                                  await updateOrderTracking(order.id); 
+                                  fetchOrders('seller', user.uid).then(data => {
+                                      const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
+                                      setOrders(unique);
+                                  }); 
+                              }} className="w-full py-2 bg-brand-blue text-white rounded-lg font-bold">Mark as Shipped</button>}
                              
                              {order.status === 'Cancellation Requested' && (
                                 <div className="mt-4 p-4 bg-red-50 rounded-xl border border-red-100">
@@ -1186,7 +1201,10 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                                      const success = await updateOrderStatus(order.id, 'Processing');
                                                      if (success) {
                                                          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Processing' } : o));
-                                                         fetchOrders('seller', user.uid).then(setOrders);
+                                                         fetchOrders('seller', user.uid).then(data => {
+                                                              const unique = Array.from(new Map(data.map(item => [item.id, item])).values());
+                                                              setOrders(unique);
+                                                          });
                                                      } else {
                                                          alert("Failed to update order status.");
                                                      }
@@ -1203,7 +1221,8 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                                      if (success) {
                                                         setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Cancelled' } : o));
                                                         const data = await fetchOrders('seller', user.uid);
-                                                        setOrders(data);
+                                                        const unique = Array.from(new Map(data.map(item => [item.id, item])).values());
+                                                        setOrders(unique);
                                                      } else {
                                                         alert("Failed to cancel order. Please try again.");
                                                      }
@@ -1978,7 +1997,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
             if (!isSellerOrAdmin) {
                 setIsLoadingOrders(true);
                 fetchOrders('customer', user.uid).then(data => {
-                    setOrders(data);
+                    const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
+                    setOrders(unique);
                     setIsLoadingOrders(false);
                 });
             }
@@ -2204,7 +2224,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
         setIsCancelling(true);
         await requestOrderCancellation(orderToCancel.id, reason);
         const data = await fetchOrders('customer', user.uid);
-        setOrders(data);
+        const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
+        setOrders(unique);
         setIsCancelling(false);
         setIsCancelOrderModalOpen(false);
         setOrderToCancel(null);
@@ -2292,6 +2313,50 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
         );
     };
 
+    const ProfileSectionHeader = ({ title, icon }: { title: string, icon: React.ReactNode }) => (
+        <div className="mb-8 overflow-visible relative lg:static">
+            <div 
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="flex items-center justify-between cursor-pointer group lg:cursor-default lg:pointer-events-none"
+            >
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-brand-light rounded-2xl text-brand-blue lg:hidden">
+                        {icon}
+                    </div>
+                    <h2 className="text-3xl font-serif font-bold text-stone-900">{title}</h2>
+                </div>
+                <div className="lg:hidden p-2 bg-stone-100 rounded-xl group-hover:bg-brand-light transition-all">
+                    <ChevronDown className={`w-5 h-5 text-stone-400 transition-transform duration-300 ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
+                </div>
+            </div>
+            <AnimatePresence>
+                {isMobileMenuOpen && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 5, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        className="absolute left-0 right-0 top-full z-[80] mt-2 bg-white rounded-2xl shadow-2xl border border-stone-100 lg:hidden overflow-hidden"
+                    >
+                        {activeTabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNavigate(`/profile/${tab.id}`);
+                                    setIsMobileMenuOpen(false);
+                                }}
+                                className={`w-full flex items-center gap-4 px-6 py-4 text-left transition-colors ${tab.id === activeTab ? 'bg-blue-50 text-brand-blue' : 'hover:bg-stone-50 text-stone-600'}`}
+                            >
+                                <span className={tab.id === activeTab ? 'text-brand-blue' : 'text-stone-400'}>{tab.icon}</span>
+                                <span className="font-bold">{tab.label}</span>
+                            </button>
+                        ))}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+
     // Profile render logic...
     return (
         <div className="min-h-screen bg-stone-50">
@@ -2354,50 +2419,14 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                     <div className="lg:col-span-3">
+                     <div className="hidden lg:block lg:col-span-3">
                         <div className="sticky top-24">
                             <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-4 pl-4">Account Menu</h3>
-                            
-                            {/* Mobile Trigger */}
-                            <button 
-                                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                                className="lg:hidden w-full text-left px-6 py-4 rounded-xl flex items-center gap-4 font-bold bg-white text-stone-900 shadow-sm border border-stone-200 mb-4 transition-all active:scale-[0.98]"
-                            >
-                                <div className="text-brand-blue">
-                                    {activeTabData.icon}
-                                </div>
-                                <span className="flex-1 truncate">{activeTabData.label}</span>
-                                <div className="p-1 bg-stone-50 rounded-lg">
-                                    <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-300 ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
-                                </div>
-                            </button>
-
-                            {/* Collapsible Tabs Container */}
-                            <motion.div
-                                initial={false}
-                                animate={isMobileMenuOpen || isDesktop ? "open" : "closed"}
-                                variants={{
-                                    open: { 
-                                        height: "auto", 
-                                        opacity: 1,
-                                        display: "block",
-                                        transition: { type: "spring", stiffness: 300, damping: 30 }
-                                    },
-                                    closed: { 
-                                        height: 0, 
-                                        opacity: 0,
-                                        transitionEnd: { display: "none" },
-                                        transition: { duration: 0.2, ease: "easeInOut" }
-                                    }
-                                }}
-                                className="lg:!h-auto lg:!opacity-100 lg:!display-block overflow-hidden lg:overflow-visible"
-                            >
-                                <div className="pb-4 lg:pb-0">
-                                    {activeTabs.map(tab => (
-                                        <TabButton key={tab.id} {...tab} />
-                                    ))}
-                                </div>
-                            </motion.div>
+                            <div className="pb-4 lg:pb-0">
+                                {activeTabs.map(tab => (
+                                    <TabButton key={tab.id} {...tab} />
+                                ))}
+                            </div>
                         </div>
                     </div>
 
@@ -2405,7 +2434,7 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                          {/* Content based on activeTab - using the same structure as before */}
                          {activeTab === 'orders' && !isSellerOrAdmin && (
                             <div className="space-y-6 animate-scale-in">
-                                <h2 className="text-2xl font-serif font-bold text-stone-900 mb-6">Order History</h2>
+                                <ProfileSectionHeader title="Order History" icon={<Package className="w-6 h-6" />} />
                                 {isLoadingOrders ? (
                                     <div className="p-20 text-center"><Loader className="w-10 h-10 animate-spin mx-auto text-brand-blue" /></div>
                                 ) : orders.length > 0 ? (
@@ -2480,8 +2509,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                          
                          {activeTab === 'personal' && (
                              <div className="space-y-8 animate-scale-in">
+                                <ProfileSectionHeader title={isAdmin ? "Personal Information" : "Profile Settings"} icon={<User className="w-6 h-6" />} />
                                 <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
-                                    <h2 className="text-2xl font-serif font-bold text-stone-900 mb-8">Personal Information</h2>
                                     <form onSubmit={handleEditSubmit} className="space-y-6 max-w-2xl">
                                         <div className="grid md:grid-cols-2 gap-6">
                                             <div className="space-y-2">
@@ -2548,8 +2577,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
 
                         {activeTab === 'shop' && isSeller && (
                             <div className="space-y-8 animate-scale-in">
+                                <ProfileSectionHeader title="Shop Profile" icon={<Store className="w-6 h-6" />} />
                                 <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
-                                    <h2 className="text-2xl font-serif font-bold text-stone-900 mb-6">Shop Profile</h2>
                                     <div className="space-y-6 max-w-2xl">
                                         <div className="flex items-center gap-6">
                                             <div className="w-24 h-24 rounded-full bg-stone-100 overflow-hidden relative border border-stone-200">
@@ -2626,9 +2655,11 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                              </div>
                         )}
                         {activeTab === 'addresses' && !isSellerOrAdmin && (
-                            <div className="bg-white p-8 rounded-3xl border border-stone-100 animate-scale-in shadow-sm">
-                                <div className="flex justify-between items-center mb-8">
-                                    <h2 className="text-2xl font-serif font-bold text-stone-900">Saved Addresses</h2>
+                            <div className="space-y-8 animate-scale-in">
+                                <ProfileSectionHeader title="Saved Addresses" icon={<MapPin className="w-6 h-6" />} />
+                                <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h2 className="text-xl font-bold text-stone-800">Your Locations</h2>
                                     <button 
                                         onClick={() => onOpenAddressModal()} 
                                         className="px-4 py-2 bg-brand-blue text-white rounded-lg font-bold hover:bg-blue-800 transition-colors flex items-center gap-2 text-sm"
@@ -2683,11 +2714,12 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                                      )}
                                  </div>
                             </div>
+                        </div>
                         )}
                         {activeTab === 'security' && (
                              <div className="space-y-8 animate-scale-in">
+                                <ProfileSectionHeader title="Security & Account" icon={<Lock className="w-6 h-6" />} />
                                 <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
-                                    <h2 className="text-2xl font-serif font-bold text-stone-900 mb-8">Security & Password</h2>
                                     
                                     <div className="space-y-8">
                                         {/* Password Reset Section */}
@@ -2780,9 +2812,11 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                         )}
 
                         {activeTab === 'payment' && !isSellerOrAdmin && (
-                            <div className="bg-white p-8 rounded-3xl border border-stone-100 animate-scale-in shadow-sm">
-                                <div className="flex justify-between items-center mb-8">
-                                    <h2 className="text-2xl font-serif font-bold text-stone-900">Payment Methods</h2>
+                            <div className="space-y-8 animate-scale-in">
+                                <ProfileSectionHeader title="Payment Methods" icon={<CreditCard className="w-6 h-6" />} />
+                                <div className="bg-white p-8 rounded-3xl border border-stone-100 shadow-sm">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h2 className="text-xl font-bold text-stone-800">Saved Methods</h2>
                                     <button 
                                         onClick={() => handleOpenPaymentModal()} 
                                         className="px-4 py-2 bg-brand-blue text-white rounded-lg font-bold hover:bg-blue-800 transition-colors flex items-center gap-2 text-sm"
@@ -2837,6 +2871,7 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                                      )}
                                  </div>
                             </div>
+                        </div>
                         )}
                     </div>
                 </div>
@@ -4518,7 +4553,8 @@ export const App: React.FC = () => {
       try {
           const fetched = await fetchProducts();
           if (fetched) {
-              setProducts(fetched);
+              const unique = Array.from(new Map(fetched.map(p => [p.id, p])).values());
+              setProducts(unique);
           }
       } catch (err: any) {
           console.error("Failed to load products:", err);
@@ -4543,6 +4579,7 @@ export const App: React.FC = () => {
                   return {
                       ...prev,
                       ...profile,
+                      paymentCredentials: Array.from(new Map((profile.paymentCredentials || []).map(p => [p.id, p])).values()),
                       name: profile.displayName || u.displayName || prev.name,
                       email: u.email || prev.email,
                       emailVerified: u.emailVerified

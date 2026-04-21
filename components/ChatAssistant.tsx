@@ -31,7 +31,8 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({
   useEffect(() => {
     if (user) {
       const unsubscribe = getUserConversations(user.uid, (convos) => {
-        setConversations(convos);
+        const unique = Array.from(new Map(convos.map(c => [c.id, c])).values());
+        setConversations(unique);
       });
       return () => unsubscribe();
     }
@@ -41,7 +42,8 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({
   useEffect(() => {
     if (activeConversationId) {
       const unsubscribe = subscribeToMessages(activeConversationId, (msgs) => {
-        setMessages(msgs);
+        const unique = Array.from(new Map(msgs.map(m => [m.id, m])).values());
+        setMessages(unique);
       });
       return () => unsubscribe();
     }
