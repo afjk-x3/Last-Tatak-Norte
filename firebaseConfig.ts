@@ -30,10 +30,25 @@ if (!firebase.apps.length) {
 
 const auth = firebase.auth();
 const db = firebase.firestore();
+try {
+  db.settings({ experimentalForceLongPolling: true });
+} catch (e) {
+  console.warn("Firestore settings already applied or failed:", e);
+}
 const storage = firebase.storage();
 
 if (!isFirebaseConfigured()) {
   console.info("⚠️ Firebase is not configured yet. App running in Demo Mode.");
+} else {
+  // Test connection to Firestore
+  db.collection('test').doc('connection').get({ source: 'server' })
+    .then(() => console.log("🔥 Firestore connected successfully"))
+    .catch((error) => {
+      console.error("🔥 Firestore connection failed:", error.message);
+      if (error.message.includes('unavailable')) {
+        console.info("💡 Tip: This often happens due to networking constraints in the preview. Long polling is enabled to help.");
+      }
+    });
 }
 
 export { auth, db, storage };

@@ -1,4 +1,4 @@
-import { CartItem, PaymentMethod, DeliveryMethod } from '../types';
+import { CartItem, PaymentMethod, DeliveryMethod, Address, Order } from '../types';
 
 /**
  * Sends a notification to Zapier when a new order is created.
@@ -13,7 +13,8 @@ export const zapierNewOrder = (
   items: CartItem[],
   totalAmount: number,
   paymentMethod: PaymentMethod,
-  deliveryMethod: DeliveryMethod
+  deliveryMethod: DeliveryMethod,
+  shippingAddress?: Address
 ) => {
   // Only fire for specific payment methods
   if (paymentMethod !== 'GCash' && paymentMethod !== 'Credit/Debit Card' && paymentMethod !== 'COD') {
@@ -53,6 +54,18 @@ export const zapierNewOrder = (
     itemCount: items.length,
     paymentMethod: paymentMethod,
     deliveryMethod: deliveryMethod,
+    // Shipping Address Details for Shipping Labels
+    shippingName: shippingAddress.fullName,
+    shippingStreet: shippingAddress.street,
+    shippingBarangay: shippingAddress.barangay,
+    shippingCity: shippingAddress.city,
+    shippingProvince: shippingAddress.province,
+    shippingZip: shippingAddress.zipCode,
+    shippingPhone: shippingAddress.phone || '', 
+    
+    senderName: 'Tatak Norte',
+    senderAddress: 'Batac City, Ilocos Norte',
+    carrier: 'J&T Express',
     timestamp: new Date().toISOString(),
     source: 'tataknorte',
   };
@@ -71,4 +84,43 @@ export const zapierNewOrder = (
       // Non-blocking: we just log the error
       console.error('Failed to send Zapier notification:', error);
     });
+};
+
+/**
+ * Specifically triggers a shipping label generation in Zapier.
+ * This can be called manually by a seller or automated.
+ */
+export const triggerShippingLabel = (order: Order) => {
+  const webhookUrl = import.meta.env.VITE_ZAPIER_NEW_ORDER; // Re-using SAME hook or could use a new one if specified
+
+  if (!webhookUrl || !order.shippingAddress) {
+    console.warn('Zapier Webhook URL is not configured or no shipping address available.');
+    return;
+  }
+
+  const payload = {
+    action: 'GENERATE_LABEL',
+    orderId: order.id,
+    customerName: order.customerName,
+    customerEmail: order.customerEmail,
+    shippingFullName: order.shippingAddress.fullName,
+    shippingMobile: order.shippingAddress.mobileNumber,
+    shippingStreet: order.shippingAddress.street,
+    shippingBarangay: order.shippingAddress.barangay,
+    shippingCity: order.shippingAddress.city,
+    shippingProvince: order.shippingAddress.province,
+    items: order.items.map(item => `${item.quantity}x ${item.name}`).join(', '),
+    timestamp: new Date().toISOString(),
+    source: 'tataknorte',
+  };
+
+  fetch(webhookUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {
+      'Content-Type': 'text/plain',
+    },
+    body: JSON.stringify(payload),
+  }).then(() => console.log('Shipping label trigger sent to Zapier'))
+    .catch(err => console.error('Zapier shipping label trigger failed:', err));
 };

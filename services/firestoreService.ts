@@ -4,8 +4,9 @@
 
 
 import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
 import { db, storage, isFirebaseConfigured, auth } from '../firebaseConfig';
-import { Product, UserRole, UserProfile, Order, CartItem, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, Conversation, ChatMessage, TrackingEvent, Variation, SellerApplication } from '../types';
+import { Product, UserRole, UserProfile, Order, CartItem, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, Conversation, ChatMessage, TrackingEvent, Variation, SellerApplication, ShippingLabel } from '../types';
 import { PRODUCTS } from '../constants';
 import { zapierNewOrder } from './zapierService';
 
@@ -169,6 +170,46 @@ export const deleteProduct = async (productId: string): Promise<boolean> => {
 
 // --- REVIEWS & RATINGS ---
 
+export const checkIfUserCanReview = async (productId: string, userId: string): Promise<{ canReview: boolean; isVerified: boolean }> => {
+    if (!isFirebaseConfigured() || !userId) return { canReview: false, isVerified: false };
+    
+    try {
+        // 1. Check if user already reviewed this product
+        const existingReview = await db.collection(REVIEWS_COLLECTION)
+            .where('productId', '==', productId)
+            .where('userId', '==', userId)
+            .limit(1)
+            .get();
+        
+        if (!existingReview.empty) {
+            return { canReview: false, isVerified: false }; // Already reviewed
+        }
+
+        // 2. Check if user has a completed order with this product
+        // Note: In a real app, you'd check orders. Here we check if any 'Completed' order contains the productId
+        const ordersSnapshot = await db.collection(ORDERS_COLLECTION)
+            .where('customerId', '==', userId)
+            .where('status', '==', 'Completed')
+            .get();
+        
+        let hasPurchased = false;
+        ordersSnapshot.forEach(doc => {
+            const order = doc.data() as Order;
+            if (order.items.some(item => item.id === productId)) {
+                hasPurchased = true;
+            }
+        });
+
+        return { 
+            canReview: hasPurchased, 
+            isVerified: hasPurchased 
+        };
+    } catch (error) {
+        console.error("Error checking review eligibility:", error);
+        return { canReview: false, isVerified: false };
+    }
+};
+
 export const fetchProductReviews = async (productId: string): Promise<Review[]> => {
     if (!isFirebaseConfigured()) return [];
     try {
@@ -194,7 +235,7 @@ export const fetchProductReviews = async (productId: string): Promise<Review[]> 
     }
 };
 
-export const addProductReview = async (productId: string, userId: string, userName: string, rating: number, comment: string): Promise<boolean> => {
+export const addProductReview = async (productId: string, userId: string, userName: string, rating: number, comment: string, isVerified: boolean = false): Promise<boolean> => {
     if (!isFirebaseConfigured()) return false;
     try {
         const batch = db.batch();
@@ -207,6 +248,7 @@ export const addProductReview = async (productId: string, userId: string, userNa
             userName,
             rating,
             comment,
+            isVerified,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
@@ -697,7 +739,8 @@ export const createOrder = async (
             items,
             totalAmount,
             paymentMethod,
-            deliveryMethod
+            deliveryMethod,
+            shippingAddress
         );
 
         return orderRef.id;
@@ -904,7 +947,6 @@ export const approveOrderCancellation = async (orderId: string): Promise<boolean
 
 // Helper to generate automated tracking number
 const generateTrackingNumber = () => {
-    // Generate a 12-digit number starting with '9'
     const random = Math.floor(Math.random() * 100000000000).toString().padStart(11, '0');
     return '9' + random;
 };
@@ -912,15 +954,47 @@ const generateTrackingNumber = () => {
 export const updateOrderTracking = async (orderId: string, courier: string = 'J&T Express'): Promise<string | null> => {
     if (!isFirebaseConfigured()) return null;
     try {
+        // Fetch the order first to get shipping address
+        const orderDoc = await db.collection(ORDERS_COLLECTION).doc(orderId).get();
+        if (!orderDoc.exists) return null;
+
+        const order = { id: orderDoc.id, ...orderDoc.data() } as Order;
         const trackingNumber = generateTrackingNumber();
-        await db.collection(ORDERS_COLLECTION).doc(orderId).update({ 
+
+        const addr = order.shippingAddress;
+        const recipientAddress = addr
+            ? `${addr.street}, ${addr.barangay}, ${addr.city}, ${addr.province}`
+            : 'Pickup / In-store';
+
+        const shippingLabel: ShippingLabel = {
+            labelId: `JT-${orderId.slice(-6).toUpperCase()}`,
+            carrier: 'J&T Express',
+            trackingNumber,
+            recipient: {
+                name: addr?.fullName || order.customerName,
+                address: recipientAddress,
+                phone: addr?.mobileNumber || '',
+            },
+            sender: {
+                name: 'Tatak Norte',
+                address: 'Laoag City, Ilocos Norte 2900',
+            },
+            orderId,
+            itemCount: order.items?.length || 0,
+            generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'ready',
+        };
+
+        await db.collection(ORDERS_COLLECTION).doc(orderId).update({
             trackingNumber,
             courier,
-            status: 'Shipped' // Automatically mark as shipped when tracking is added
+            status: 'Shipped',
+            shippingLabel,
         });
+
         return trackingNumber;
     } catch (error) {
-        console.error("Error updating tracking info:", error);
+        console.error('Error updating tracking info:', error);
         return null;
     }
 };

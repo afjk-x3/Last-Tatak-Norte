@@ -59,6 +59,7 @@ export interface Review {
   rating: number;
   comment: string;
   createdAt: any;
+  isVerified?: boolean;
   sellerReply?: string;
   sellerReplyCreatedAt?: any;
 }
@@ -149,6 +150,19 @@ export interface Order {
   trackingNumber?: string;
   courier?: string;
   cancellationReason?: string;
+  shippingLabel?: ShippingLabel;
+}
+
+export interface ShippingLabel{
+  labelId: string;
+  carrier: 'J&T Express';
+  trackingNumber: string;
+  recipient: {name: string; address: string; phone: string; };
+  sender: { name: string; address: string};
+  orderId: string;
+  itemCount: number;
+  generatedAt: any;
+  status: 'ready' | 'printed';
 }
 
 export interface SellerApplication {

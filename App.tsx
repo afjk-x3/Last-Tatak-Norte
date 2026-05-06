@@ -1,16 +1,18 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { PRODUCTS } from './constants'; 
-import { Product, CartItem, Category, UserRole, UserProfile, Order, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, BankAccount, Variation, TrackingEvent, SellerApplication } from './types';
+import { Product, CartItem, Category, UserRole, UserProfile, Order, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, BankAccount, Variation, TrackingEvent, SellerApplication, ShippingLabel, PaymentCredential } from './types';
 import { Star, ArrowRight, Trash2, Plus, Minus, MapPin, X, ShoppingBag, Facebook, CheckCircle, Loader, Eye, EyeOff, LayoutDashboard, Package, TrendingUp, Users, AlertCircle, ShieldCheck, Ban, ChevronLeft, Tag, Search, ShoppingCart, CreditCard, ChevronDown, UserCircle, Edit3, Save, Camera, Mail, MessageSquare, Truck, Banknote, Bell, FileText, Lock, Settings, Check, Filter, SlidersHorizontal, Award, ChevronRight, User, Store, Send, ChevronUp, Image as ImageIcon, Printer, AlertTriangle, Phone, Globe, Instagram, Twitter, Calendar, Heart, Hammer, Leaf, LogIn, PauseCircle, ShieldBan, PlayCircle, MessageCircle, CornerDownRight, BarChart3, DollarSign, PackageCheck, Clock, Archive, ArrowUpRight } from 'lucide-react';
 import firebase, { auth, isFirebaseConfigured } from './firebaseConfig';
-import { fetchProducts, seedDatabase, createUserDocument, getUserProfile, fetchSellerProducts, addProduct, deleteProduct, fetchAllUsers, updateUserRole, deleteUserDocument, createOrder, fetchOrders, updateOrderStatus, updateUserBag, updateUserProfile, addProductReview, fetchProductReviews, uploadProfileImage, uploadShopImage, startConversation, uploadProductImage, updateProduct, updateOrderTracking, fetchJtTracking, submitSellerApplication, fetchSellerApplications, approveSellerApplication, rejectSellerApplication, requestOrderCancellation, approveOrderCancellation, fetchApprovedSellers, updateUserStatus, checkSuspensionExpiry, replyToReview, deleteReview, updateProductAdminStatus } from './services/firestoreService';
+import { fetchProducts, seedDatabase, createUserDocument, getUserProfile, fetchSellerProducts, addProduct, deleteProduct, fetchAllUsers, updateUserRole, deleteUserDocument, createOrder, fetchOrders, updateOrderStatus, updateUserBag, updateUserProfile, addProductReview, fetchProductReviews, uploadProfileImage, uploadShopImage, startConversation, uploadProductImage, updateProduct, updateOrderTracking, fetchJtTracking, submitSellerApplication, fetchSellerApplications, approveSellerApplication, rejectSellerApplication, requestOrderCancellation, approveOrderCancellation, fetchApprovedSellers, updateUserStatus, checkSuspensionExpiry, replyToReview, deleteReview, updateProductAdminStatus, checkIfUserCanReview } from './services/firestoreService';
 import { fetchProvinces, fetchCities, fetchBarangays, LocationCode } from './services/locationService';
 import ChatAssistant from './components/ChatAssistant';
+import ShippingLabelModal from './components/ShippingLabelModal';
 import { HERO_COVER } from './assets/images';
+import { triggerShippingLabel } from './services/zapierService';
 
 // --- Types for App State ---
 interface UserState {
@@ -526,7 +528,7 @@ const TrackingModal: React.FC<{ isOpen: boolean; onClose: () => void; trackingNu
 };
 
 // ... Include Dashboard, CartPage, AboutPage, ProfilePage fully ...
-const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGlobalData }) => {
+const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGlobalData, setSelectedLabel }) => {
     const { tab } = useParams();
     const navigate = useNavigate();
     const isAdmin = user?.role === 'admin';
@@ -1181,13 +1183,37 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                      <div key={idx} className="flex justify-between text-sm"><span>{item.quantity}x {item.name} {item.selectedVariation && `(${item.selectedVariation.name})`}</span><span>₱{(item.price * item.quantity).toLocaleString()}</span></div>
                                  ))}
                              </div>
-                             {order.status === 'Processing' && <button onClick={async () => { 
-                                  await updateOrderTracking(order.id); 
-                                  fetchOrders('seller', user.uid).then(data => {
-                                      const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
-                                      setOrders(unique);
-                                  }); 
-                              }} className="w-full py-2 bg-brand-blue text-white rounded-lg font-bold">Mark as Shipped</button>}
+                             {order.status === 'Processing' && (
+                                 <div className="flex gap-3">
+                                     <button 
+                                         onClick={() => triggerShippingLabel(order)}
+                                         className="flex-1 py-2 border border-stone-200 text-stone-600 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-stone-50 transition-colors text-sm"
+                                     >
+                                         <Printer className="w-4 h-4" /> Ship Label
+                                     </button>
+                                     <button 
+                                         onClick={async () => { 
+                                             await updateOrderTracking(order.id); 
+                                             fetchOrders('seller', user.uid).then(data => {
+                                                 const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
+                                                 setOrders(unique);
+                                             }); 
+                                         }} 
+                                         className="flex-[2] py-2 bg-brand-blue text-white rounded-lg font-bold flex items-center justify-center gap-2 text-sm"
+                                     >
+                                         <PackageCheck className="w-4 h-4" /> Mark as Shipped
+                                     </button>
+                                 </div>
+                             )}
+
+                             {order.shippingLabel && (
+                                 <button
+                                     onClick={() => setSelectedLabel(order.shippingLabel!)}
+                                     className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-stone-100 text-stone-700 rounded-lg font-bold hover:bg-stone-200 transition-colors border border-stone-200"
+                                 >
+                                     🏷️ View Shipping Label
+                                 </button>
+                             )}
                              
                              {order.status === 'Shipped' && <button onClick={async () => { 
                                   await updateOrderStatus(order.id, 'Completed'); 
@@ -1927,6 +1953,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isTrackingOpen, setIsTrackingOpen] = useState(false);
     const [selectedTrackingOrder, setSelectedTrackingOrder] = useState<Order | null>(null);
+    const [orderFilter, setOrderFilter] = useState('All');
+    const [orderSort, setOrderSort] = useState('latest');
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
@@ -2067,6 +2095,19 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
             navigate('/profile/orders', { replace: true });
         }
     }, [isAdmin, isSeller, isSellerOrAdmin, activeTab, navigate]);
+
+    const filteredOrders = useMemo(() => {
+        return orders.filter(order => {
+            const matchesStatus = orderFilter === 'All' || order.status === orderFilter;
+            return matchesStatus;
+        }).sort((a, b) => {
+            if (orderSort === 'latest') return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+            if (orderSort === 'oldest') return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+            if (orderSort === 'price-high') return b.totalAmount - a.totalAmount;
+            if (orderSort === 'price-low') return a.totalAmount - b.totalAmount;
+            return 0;
+        });
+    }, [orders, orderFilter, orderSort]);
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0] && user) {
@@ -2450,65 +2491,123 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                          {activeTab === 'orders' && !isSellerOrAdmin && (
                             <div className="space-y-6 animate-scale-in">
                                 <ProfileSectionHeader title="Order History" icon={<Package className="w-6 h-6" />} />
-                                {isLoadingOrders ? (
-                                    <div className="p-20 text-center"><Loader className="w-10 h-10 animate-spin mx-auto text-brand-blue" /></div>
-                                ) : orders.length > 0 ? (
-                                    orders.map(order => (
-                                        <div key={order.id} className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow group">
-                                            {/* Order Card Content */}
-                                            <div className="flex flex-wrap justify-between items-start gap-4 mb-6 border-b border-stone-100 pb-4">
-                                                <div>
-                                                    <div className="flex items-center gap-3 mb-1">
-                                                        <span className="font-bold text-xl text-stone-900">#{order.id.slice(-6).toUpperCase()}</span>
-                                                        <span className="text-sm text-stone-400">• {new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
-                                                    </div>
-                                                    <div className="text-sm text-stone-500">
-                                                        Total Amount: <span className="font-bold text-brand-blue text-lg">₱{order.totalAmount.toLocaleString()}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end gap-2">
-                                                     <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 ${
-                                                         order.status === 'Delivered' || order.status === 'Completed' ? 'bg-green-100 text-green-700' : 
-                                                         order.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
-                                                         order.status === 'Cancellation Requested' ? 'bg-orange-100 text-orange-700' :
-                                                         'bg-blue-100 text-blue-700'
-                                                     }`}>
-                                                         {order.status}
-                                                     </span>
-                                                     {order.trackingNumber && (
-                                                         <button onClick={() => { setSelectedTrackingOrder(order); setIsTrackingOpen(true); }} className="px-4 py-1.5 bg-stone-100 hover:bg-stone-200 rounded-full text-xs font-bold text-stone-600 flex items-center gap-2 transition-colors">
-                                                             <Truck className="w-3 h-3" /> Track Order
-                                                         </button>
-                                                     )}
-                                                     {order.status === 'Processing' && (
-                                                        <button 
-                                                            onClick={() => handleCancelOrderClick(order)}
-                                                            className="px-4 py-1.5 border border-stone-200 hover:bg-stone-50 rounded-full text-xs font-bold text-stone-600 flex items-center gap-2 transition-colors"
-                                                        >
-                                                            Cancel Order
-                                                        </button>
-                                                     )}
-                                                </div>
-                                            </div>
-                                            <div className="space-y-4">
-                                                {order.items.map((item, idx) => (
-                                                    <div key={idx} className="flex gap-4 items-center p-2 rounded-xl hover:bg-stone-50 transition-colors">
-                                                        <div className="w-16 h-16 rounded-xl bg-white border border-stone-200 overflow-hidden flex-shrink-0">
-                                                            <img src={item.image} className="w-full h-full object-cover" alt="" />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-bold text-stone-900 truncate">{item.name}</p>
-                                                            <p className="text-sm text-stone-500">{item.selectedVariation?.name || 'Standard Variant'}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="font-bold text-stone-900">₱{item.price.toLocaleString()}</div>
-                                                            <div className="text-xs text-stone-500">Qty: {item.quantity}</div>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                
+                                {/* Filters and Sorting UI */}
+                                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mb-4 space-y-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1.5 ml-1">Order Status</label>
+                                            <div className="relative">
+                                                <select 
+                                                    value={orderFilter}
+                                                    onChange={(e) => setOrderFilter(e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm font-medium focus:ring-4 focus:ring-blue-500/10 outline-none appearance-none transition-all"
+                                                >
+                                                    <option value="All">All Statuses</option>
+                                                    <option value="Processing">Processing</option>
+                                                    <option value="Shipped">Shipped</option>
+                                                    <option value="Completed">Completed</option>
+                                                    <option value="Cancelled">Cancelled</option>
+                                                    <option value="Cancellation Requested">Cancellation Requested</option>
+                                                </select>
+                                                <ChevronDown className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                             </div>
                                         </div>
-                                    ))
+                                        
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1.5 ml-1">Sort By</label>
+                                            <div className="relative">
+                                                <select 
+                                                    value={orderSort}
+                                                    onChange={(e) => setOrderSort(e.target.value)}
+                                                    className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm font-medium focus:ring-4 focus:ring-blue-500/10 outline-none appearance-none transition-all"
+                                                >
+                                                    <option value="latest">Latest First</option>
+                                                    <option value="oldest">Oldest First</option>
+                                                    <option value="price-high">Price: High to Low</option>
+                                                    <option value="price-low">Price: Low to High</option>
+                                                </select>
+                                                <ChevronDown className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-4">
+                                        { (orderFilter !== 'All' || orderSort !== 'latest') && (
+                                             <button 
+                                                 onClick={() => {
+                                                     setOrderFilter('All');
+                                                     setOrderSort('latest');
+                                                 }}
+                                                 className="text-[11px] font-bold text-brand-blue hover:text-blue-800 transition-colors flex items-center gap-1 ml-1"
+                                             >
+                                                 <X className="w-3 h-3" /> Reset Filters
+                                             </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                 {isLoadingOrders ? (
+                                    <div className="p-20 text-center"><Loader className="w-10 h-10 animate-spin mx-auto text-brand-blue" /></div>
+                                ) : filteredOrders.length > 0 ? (
+                                    <div className="space-y-6">
+                                        {filteredOrders.map(order => (
+                                            <div key={order.id} className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow group">
+                                                {/* Order Card Content */}
+                                                <div className="flex flex-wrap justify-between items-start gap-4 mb-6 border-b border-stone-100 pb-4">
+                                                    <div>
+                                                        <div className="flex items-center gap-3 mb-1">
+                                                            <span className="font-bold text-xl text-stone-900">#{order.id.slice(-6).toUpperCase()}</span>
+                                                            <span className="text-sm text-stone-400">• {new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
+                                                        </div>
+                                                        <div className="text-sm text-stone-500">
+                                                            Total Amount: <span className="font-bold text-brand-blue text-lg">₱{order.totalAmount.toLocaleString()}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                         <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 ${
+                                                             order.status === 'Delivered' || order.status === 'Completed' ? 'bg-green-100 text-green-700' : 
+                                                             order.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
+                                                             order.status === 'Cancellation Requested' ? 'bg-orange-100 text-orange-700' :
+                                                             'bg-blue-100 text-blue-700'
+                                                         }`}>
+                                                             {order.status}
+                                                         </span>
+                                                         {order.trackingNumber && (
+                                                             <button onClick={() => { setSelectedTrackingOrder(order); setIsTrackingOpen(true); }} className="px-4 py-1.5 bg-stone-100 hover:bg-stone-200 rounded-full text-xs font-bold text-stone-600 flex items-center gap-2 transition-colors">
+                                                                 <Truck className="w-3 h-3" /> Track Order
+                                                             </button>
+                                                         )}
+                                                         {order.status === 'Processing' && (
+                                                            <button 
+                                                                onClick={() => handleCancelOrderClick(order)}
+                                                                className="px-4 py-1.5 border border-stone-200 hover:bg-stone-50 rounded-full text-xs font-bold text-stone-600 flex items-center gap-2 transition-colors"
+                                                            >
+                                                                Cancel Order
+                                                            </button>
+                                                         )}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-4">
+                                                    {order.items.map((item, idx) => (
+                                                        <div key={idx} className="flex gap-4 items-center p-2 rounded-xl hover:bg-stone-50 transition-colors">
+                                                            <div className="w-16 h-16 rounded-xl bg-white border border-stone-200 overflow-hidden flex-shrink-0">
+                                                                <img src={item.image} className="w-full h-full object-cover" alt="" />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-bold text-stone-900 truncate">{item.name}</p>
+                                                                <p className="text-sm text-stone-500">{item.selectedVariation?.name || 'Standard Variant'}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="font-bold text-stone-900">₱{item.price.toLocaleString()}</div>
+                                                                <div className="text-xs text-stone-500">Qty: {item.quantity}</div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 ) : (
                                     <div className="text-center py-24 bg-white rounded-3xl border border-stone-100 border-dashed">
                                         <div className="w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -2519,8 +2618,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                                         <button onClick={() => onNavigate('/shop')} className="px-8 py-3 bg-brand-blue text-white rounded-full font-bold hover:bg-blue-800 transition-colors shadow-lg shadow-blue-900/20">Start Shopping</button>
                                     </div>
                                 )}
-                            </div>
-                        )}
+                    </div>
+                )}
                          
                          {activeTab === 'personal' && (
                              <div className="space-y-8 animate-scale-in">
@@ -3005,6 +3104,7 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
 
 const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, user, onLoginRequest, onRefreshProduct, onChatWithSeller }) => {
     const [selectedVariation, setSelectedVariation] = useState<Variation | undefined>(undefined);
+    const [quantity, setQuantity] = useState(1);
     const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
     
@@ -3012,6 +3112,8 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
     const [newRating, setNewRating] = useState(5);
     const [newComment, setNewComment] = useState('');
     const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+    const [canReview, setCanReview] = useState(false);
+    const [isVerified, setIsVerified] = useState(false);
     
     // Pagination for Reviews
     const [visibleReviewsCount, setVisibleReviewsCount] = useState(3);
@@ -3024,8 +3126,18 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
         if (product) {
             fetchProductReviews(product.id).then(setReviews);
             setVisibleReviewsCount(3);
+            
+            if (user) {
+                checkIfUserCanReview(product.id, user.uid).then(res => {
+                    setCanReview(res.canReview);
+                    setIsVerified(res.isVerified);
+                });
+            } else {
+                setCanReview(false);
+                setIsVerified(false);
+            }
         }
-    }, [product]);
+    }, [product, user]);
     
     const prices = product.variations?.map((v: any) => v.price) || [product.price];
     const minPrice = Math.min(...prices);
@@ -3049,16 +3161,28 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
              setTimeout(() => setNotification(null), 3000);
              return;
         }
+
+        if (quantity < 1) {
+            setNotification({ message: "Please select a valid quantity.", type: 'error' });
+            setTimeout(() => setNotification(null), 3000);
+            return;
+        }
+
+        if (selectedVariation && quantity > selectedVariation.stock) {
+            setNotification({ message: `Only ${selectedVariation.stock} items left in stock.`, type: 'error' });
+            setTimeout(() => setNotification(null), 3000);
+            return;
+        }
         
-        onAddToCart({...product, selectedVariation, price: selectedVariation?.price || product.price});
-        setNotification({ message: "Successfully added to your bag!", type: 'success' });
+        onAddToCart({...product, selectedVariation, price: selectedVariation?.price || product.price, quantity});
+        setNotification({ message: `Successfully added ${quantity} item${quantity > 1 ? 's' : ''} to your bag!`, type: 'success' });
         setTimeout(() => setNotification(null), 3000);
     };
 
     const handleSubmitReview = async () => {
-        if (!user || !newComment.trim()) return;
+        if (!user || !newComment.trim() || !canReview) return;
         setIsSubmittingReview(true);
-        const success = await addProductReview(product.id, user.uid, user.name, newRating, newComment);
+        const success = await addProductReview(product.id, user.uid, user.name, newRating, newComment, isVerified);
         if (success) {
             setNewComment('');
             setNewRating(5);
@@ -3162,7 +3286,7 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
                     </div>
 
                     <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100 mb-8">
-                        <div className="flex justify-between items-end mb-4">
+                        <div className="flex justify-between items-end mb-6">
                              <div>
                                 <p className="text-sm text-stone-500 mb-1">Price</p>
                                 <p className="text-4xl font-bold text-brand-blue">₱{displayPrice.toLocaleString()}</p>
@@ -3171,6 +3295,31 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
                                 <p className="text-sm text-stone-500 mb-1">Stock</p>
                                 <p className="font-medium text-stone-900">{selectedVariation ? `${selectedVariation.stock} items` : 'Select variant'}</p>
                              </div>
+                        </div>
+
+                        {/* Quantity Selector */}
+                        <div className="mb-6">
+                            <p className="text-sm font-bold text-stone-900 uppercase tracking-wider mb-3">Quantity</p>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center border border-stone-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                                    <button 
+                                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                                        className="p-3 hover:bg-stone-50 text-stone-500 transition-colors border-r border-stone-100"
+                                    >
+                                        <Minus className="w-4 h-4" />
+                                    </button>
+                                    <div className="px-6 py-2 font-bold text-stone-900 min-w-[60px] text-center">
+                                        {quantity}
+                                    </div>
+                                    <button 
+                                        onClick={() => setQuantity(quantity + 1)}
+                                        className="p-3 hover:bg-stone-50 text-stone-500 transition-colors border-l border-stone-100"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <span className="text-xs text-stone-400 font-medium">Total: ₱{( (selectedVariation?.price || minPrice) * quantity).toLocaleString()}</span>
+                            </div>
                         </div>
                         <button 
                             onClick={handleAddToCart}
@@ -3227,7 +3376,15 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
                                                     {review.userName.charAt(0)}
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-stone-900 text-sm">{review.userName}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-bold text-stone-900 text-sm">{review.userName}</p>
+                                                        {review.isVerified && (
+                                                            <div className="flex items-center gap-1 text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded-full border border-green-100 italic">
+                                                                <ShieldCheck className="w-2.5 h-2.5" />
+                                                                Verified Purchase
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                     <StarRating rating={review.rating} size="w-3 h-3" />
                                                 </div>
                                             </div>
@@ -3309,36 +3466,51 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
                     <div className="lg:col-span-1">
                         {isCustomer ? (
                             <div className="bg-white p-6 rounded-2xl border border-stone-100 shadow-lg sticky top-24">
-                                <h3 className="font-bold text-lg text-stone-900 mb-4">Write a Review</h3>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Rating</label>
-                                        <div className="flex gap-2">
-                                            {[1, 2, 3, 4, 5].map((star) => (
-                                                <button key={star} onClick={() => setNewRating(star)} type="button">
-                                                    <Star className={`w-8 h-8 transition-colors ${star <= newRating ? 'text-yellow-400 fill-current' : 'text-stone-200 hover:text-yellow-200'}`} />
-                                                </button>
-                                            ))}
+                                {canReview ? (
+                                    <>
+                                        <h3 className="font-bold text-lg text-stone-900 mb-4">Write a Review</h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Rating</label>
+                                                <div className="flex gap-2">
+                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                        <button key={star} onClick={() => setNewRating(star)} type="button">
+                                                            <Star className={`w-8 h-8 transition-colors ${star <= newRating ? 'text-yellow-400 fill-current' : 'text-stone-200 hover:text-yellow-200'}`} />
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Comment</label>
+                                                <textarea 
+                                                    rows={4} 
+                                                    className="w-full p-3 rounded-xl border border-stone-200 focus:border-brand-blue focus:ring-4 focus:ring-blue-500/10 outline-none text-sm"
+                                                    placeholder="Share your thoughts about this product..."
+                                                    value={newComment}
+                                                    onChange={(e) => setNewComment(e.target.value)}
+                                                />
+                                            </div>
+                                            <button 
+                                                onClick={handleSubmitReview}
+                                                disabled={isSubmittingReview || !newComment.trim()}
+                                                className="w-full py-3 bg-brand-blue text-white rounded-xl font-bold hover:bg-blue-800 transition-colors shadow-lg shadow-blue-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                            >
+                                                {isSubmittingReview ? <Loader className="w-5 h-5 animate-spin" /> : 'Submit Review'}
+                                            </button>
                                         </div>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-4">
+                                        <div className="w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-3 text-stone-400">
+                                            <Package className="w-6 h-6" />
+                                        </div>
+                                        <h3 className="font-bold text-stone-900 mb-1">Cannot review yet</h3>
+                                        <p className="text-stone-500 text-xs leading-relaxed">
+                                            You can only leave a review after purchasing this product and the order is completed.
+                                            {reviews.find(r => r.userId === user?.uid) && " You have already reviewed this product."}
+                                        </p>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Comment</label>
-                                        <textarea 
-                                            rows={4} 
-                                            className="w-full p-3 rounded-xl border border-stone-200 focus:border-brand-blue focus:ring-4 focus:ring-blue-500/10 outline-none text-sm"
-                                            placeholder="Share your thoughts about this product..."
-                                            value={newComment}
-                                            onChange={(e) => setNewComment(e.target.value)}
-                                        />
-                                    </div>
-                                    <button 
-                                        onClick={handleSubmitReview}
-                                        disabled={isSubmittingReview || !newComment.trim()}
-                                        className="w-full py-3 bg-brand-blue text-white rounded-xl font-bold hover:bg-blue-800 transition-colors shadow-lg shadow-blue-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                                    >
-                                        {isSubmittingReview ? <Loader className="w-5 h-5 animate-spin" /> : 'Submit Review'}
-                                    </button>
-                                </div>
+                                )}
                             </div>
                         ) : !user ? (
                              <div className="bg-stone-50 p-6 rounded-2xl border border-stone-200 text-center">
@@ -4493,6 +4665,7 @@ export const App: React.FC = () => {
   const currentPath = location.pathname;
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [selectedLabel, setSelectedLabel] = useState<ShippingLabel | null>(null);
 
   useEffect(() => {
       const unsubscribe = auth.onAuthStateChanged(async (u) => {
@@ -4715,10 +4888,10 @@ export const App: React.FC = () => {
         <Route path="/cart" element={<CartPage cart={cart} onUpdateQuantity={handleUpdateCartQty} onRemove={handleRemoveFromCart} onCheckoutClick={() => navigate('/checkout')} onContinueShopping={() => handleNavigate('/shop')} />} />
         <Route path="/checkout" element={<CartPage cart={cart} onUpdateQuantity={handleUpdateCartQty} onRemove={handleRemoveFromCart} onCheckoutClick={() => navigate('/checkout')} onContinueShopping={() => handleNavigate('/shop')} />} />
         <Route path="/order-success" element={<OrderSuccessPage onNavigate={handleNavigate} />} />
-        <Route path="/seller-dashboard" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} />} />
-        <Route path="/seller-dashboard/:tab" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} />} />
-        <Route path="/admin-dashboard" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} />} />
-        <Route path="/admin-dashboard/:tab" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} />} />
+        <Route path="/seller-dashboard" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} setSelectedLabel={setSelectedLabel} />} />
+        <Route path="/seller-dashboard/:tab" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} setSelectedLabel={setSelectedLabel} />} />
+        <Route path="/admin-dashboard" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} setSelectedLabel={setSelectedLabel} />} />
+        <Route path="/admin-dashboard/:tab" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} setSelectedLabel={setSelectedLabel} />} />
         <Route path="/seller-registration" element={<SellerRegistrationPage user={user} onLoginClick={() => navigate('/login')} />} />
         <Route path="/profile" element={<ProfilePage user={user} onUpdateProfile={handleRefreshUser} onNavigate={handleNavigate} onOpenPaymentModal={handleOpenPaymentModal} onOpenAddressModal={handleOpenAddressModal} />} />
         <Route path="/profile/:tab" element={<ProfilePage user={user} onUpdateProfile={handleRefreshUser} onNavigate={handleNavigate} onOpenPaymentModal={handleOpenPaymentModal} onOpenAddressModal={handleOpenAddressModal} />} />
@@ -4828,6 +5001,13 @@ export const App: React.FC = () => {
               editingAddressIndex={editingAddressIndex}
               initialForm={addressModalInitialForm}
           />
+
+          {selectedLabel && (
+            <ShippingLabelModal
+              label={selectedLabel}
+              onClose={() => setSelectedLabel(null)}
+            />
+          )}
       </div>
   );
 };
