@@ -110,8 +110,8 @@ export interface Conversation {
   updatedAt: any;
 }
 
-export type OrderStatus = 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled' | 'Cancellation Requested';
-export type PaymentMethod = 'GCash' | 'PayMaya' | 'COD' | 'BankTransfer' | 'Credit/Debit Card';
+export type OrderStatus = 'Processing' | 'Shipped' | 'Delivered' | 'Completed' | 'Cancelled' | 'Cancellation Requested';
+export type PaymentMethod = 'GCash' | 'COD' | 'Credit/Debit Card';
 export type DeliveryMethod = 'Standard' | 'Pickup';
 
 export interface Address {
@@ -136,6 +136,7 @@ export interface Order {
   id: string;
   customerId: string;
   customerName: string;
+  customerEmail?: string;
   items: CartItem[];
   totalAmount: number;
   status: OrderStatus;
@@ -143,6 +144,7 @@ export interface Order {
   deliveryMethod: DeliveryMethod;
   shippingAddress?: Address;
   createdAt: any;
+  updatedAt?: any;
   sellerIds?: string[]; // List of sellers involved in this order
   trackingNumber?: string;
   courier?: string;

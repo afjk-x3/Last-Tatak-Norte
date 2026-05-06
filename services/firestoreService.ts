@@ -7,6 +7,7 @@ import firebase from 'firebase/compat/app';
 import { db, storage, isFirebaseConfigured, auth } from '../firebaseConfig';
 import { Product, UserRole, UserProfile, Order, CartItem, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, Conversation, ChatMessage, TrackingEvent, Variation, SellerApplication } from '../types';
 import { PRODUCTS } from '../constants';
+import { zapierNewOrder } from './zapierService';
 
 export enum OperationType {
   CREATE = 'create',
@@ -72,7 +73,7 @@ const SELLER_APPLICATIONS_COLLECTION = 'seller_applications';
 // Dummy IDs to filter out
 const DUMMY_IDS = ['1', '2', '3', '4', '5', '6'];
 
-// Fetch all products from Firestore (excluding dummies)
+// Fetch all products from Firestore
 export const fetchProducts = async (): Promise<Product[]> => {
   if (!isFirebaseConfigured()) return [];
 
@@ -80,9 +81,10 @@ export const fetchProducts = async (): Promise<Product[]> => {
     const snapshot = await db.collection(PRODUCTS_COLLECTION).get();
     const products: Product[] = [];
     snapshot.forEach((doc) => {
-      // Filter out dummy IDs
-      if (!DUMMY_IDS.includes(doc.id)) {
-        products.push({ id: doc.id, ...doc.data() } as Product);
+      const data = doc.data();
+      // Only include real seller products, ignore seeded or dummy data
+      if (data.sellerId !== 'system-seed' && !DUMMY_IDS.includes(doc.id)) {
+        products.push({ id: doc.id, ...data } as Product);
       }
     });
     return products;
@@ -102,9 +104,7 @@ export const fetchSellerProducts = async (sellerId: string): Promise<Product[]> 
     
     const products: Product[] = [];
     snapshot.forEach((doc) => {
-      if (!DUMMY_IDS.includes(doc.id)) {
-        products.push({ id: doc.id, ...doc.data() } as Product);
-      }
+      products.push({ id: doc.id, ...doc.data() } as Product);
     });
     return products;
   } catch (error) {
@@ -120,6 +120,7 @@ export const addProduct = async (productData: Omit<Product, 'id'>): Promise<stri
     const docRef = await db.collection(PRODUCTS_COLLECTION).add(productData);
     return docRef.id;
   } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, PRODUCTS_COLLECTION);
     console.error("Error adding product:", error);
     return null;
   }
@@ -132,6 +133,7 @@ export const updateProduct = async (productId: string, updates: Partial<Product>
     await db.collection(PRODUCTS_COLLECTION).doc(productId).update(updates);
     return true;
   } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${PRODUCTS_COLLECTION}/${productId}`);
     console.error("Error updating product:", error);
     return false;
   }
@@ -187,7 +189,7 @@ export const fetchProductReviews = async (productId: string): Promise<Review[]> 
             return timeB - timeA;
         });
     } catch (error) {
-        console.error("Error fetching reviews", error);
+        handleFirestoreError(error, OperationType.GET, REVIEWS_COLLECTION);
         return [];
     }
 };
@@ -635,13 +637,15 @@ export const createOrder = async (
             id: orderRef.id,
             customerId: userId,
             customerName: userName,
+            customerEmail: auth.currentUser?.email || '',
             items,
             totalAmount,
-            status: 'Processing',
+            status: 'Processing' as OrderStatus,
             paymentMethod,
             deliveryMethod,
             shippingAddress: shippingAddress || null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             sellerIds: sellerIds
         };
         batch.set(orderRef, orderData);
@@ -682,6 +686,20 @@ export const createOrder = async (
         }
 
         await batch.commit();
+
+        // Send notification via Zapier webhook (non-blocking)
+        const customerEmail = auth.currentUser?.email || '';
+        zapierNewOrder(
+            orderRef.id,
+            userId,
+            userName,
+            customerEmail,
+            items,
+            totalAmount,
+            paymentMethod,
+            deliveryMethod
+        );
+
         return orderRef.id;
     } catch (error) {
         console.error("Error creating order:", error);
@@ -725,11 +743,79 @@ export const fetchOrders = async (userRole: UserRole, userId: string): Promise<O
 export const updateOrderStatus = async (orderId: string, status: OrderStatus): Promise<boolean> => {
     if (!isFirebaseConfigured()) return false;
     try {
-        await db.collection(ORDERS_COLLECTION).doc(orderId).update({ status });
+        const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+        
+        await orderRef.update({ 
+            status,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Trigger Zapier Webhook if completed
+        if (status === 'Completed' || status === 'Delivered') {
+            const orderDoc = await orderRef.get();
+            if (orderDoc.exists) {
+                const orderData = { id: orderDoc.id, ...orderDoc.data() } as Order;
+                triggerOrderCompletionEmail(orderData);
+            }
+        }
+
         return true;
     } catch (error) {
         console.error("Error updating order status:", error);
         return false;
+    }
+};
+
+/**
+ * Triggers a Zapier webhook when an order is completed.
+ * Formats the order data into the required JSON payload.
+ * Production note: Moving this to a Firebase Cloud Function would be more secure.
+ */
+export const triggerOrderCompletionEmail = async (order: Order) => {
+    const webhookUrl = import.meta.env.VITE_ZAPIER_WEBHOOK_URL;
+    if (!webhookUrl) return;
+
+    try {
+        const formattedTotal = new Intl.NumberFormat('en-PH', {
+            style: 'currency',
+            currency: 'PHP',
+        }).format(order.totalAmount);
+
+        const itemsSummary = order.items.map(item => 
+            `${item.quantity}x ${item.name} (${item.artisan})${item.selectedVariation ? ` - ${item.selectedVariation.name}` : ''} @ ₱${item.price.toLocaleString()}`
+        ).join(', ');
+
+        const addr = order.shippingAddress;
+        const formattedAddress = addr 
+            ? `${addr.fullName}, ${addr.street}, ${addr.barangay}, ${addr.city}, ${addr.province}`.trim()
+            : 'Pickup/In-store';
+
+        const payload = {
+            'Customer Email': order.customerEmail || 'support@tataknorte.ph',
+            'Customer Name': order.customerName,
+            'Order Id': order.id,
+            'Total Amount': formattedTotal,
+            'Items Summary': itemsSummary,
+            'Shipping Address': formattedAddress,
+            'Tracking Number': order.trackingNumber || "To be updated",
+            'Payment Method': order.paymentMethod,
+            'Delivery Method': order.deliveryMethod,
+            'Store Name': "Tatak Norte",
+            'Support Email': "support@tataknorte.ph",
+            'source': "tatak-norte"
+        };
+
+        fetch(webhookUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'text/plain',
+            },
+            body: JSON.stringify(payload),
+        }).catch(err => console.error("Zapier Completion Webhook failed:", err));
+
+    } catch (error) {
+        console.error("Error prepared Zapier payload:", error);
     }
 };
 
@@ -1014,8 +1100,7 @@ export const subscribeToMessages = (conversationId: string, callback: (messages:
 
 // Seed the database with initial data if it's empty
 export const seedDatabase = async () => {
-    // Disabled to prevent dummy data generation
-    // console.log("Seeding disabled.");
+    // Disabled dummy data generation as requested
     return false;
 };
 

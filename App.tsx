@@ -1157,6 +1157,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                             <option value="Processing">Processing</option>
                             <option value="Shipped">Shipped</option>
                             <option value="Delivered">Delivered</option>
+                            <option value="Completed">Completed</option>
                             <option value="Cancellation Requested">Cancellation Requested</option>
                             <option value="Cancelled">Cancelled</option>
                         </select>
@@ -1167,7 +1168,7 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                              <div className="flex justify-between mb-4">
                                  <div><span className="font-bold text-lg">Order #{order.id.slice(-6)}</span><p className="text-sm text-stone-500">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</p></div>
                                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                                     order.status === 'Delivered' ? 'bg-green-100 text-green-700' : 
+                                     order.status === 'Delivered' || order.status === 'Completed' ? 'bg-green-100 text-green-700' : 
                                      order.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
                                      order.status === 'Cancellation Requested' ? 'bg-orange-100 text-orange-700' :
                                      'bg-blue-100 text-blue-700'
@@ -1187,6 +1188,14 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                       setOrders(unique);
                                   }); 
                               }} className="w-full py-2 bg-brand-blue text-white rounded-lg font-bold">Mark as Shipped</button>}
+                             
+                             {order.status === 'Shipped' && <button onClick={async () => { 
+                                  await updateOrderStatus(order.id, 'Completed'); 
+                                  fetchOrders('seller', user.uid).then(data => {
+                                      const unique = Array.from(new Map(data.map(o => [o.id, o])).values());
+                                      setOrders(unique);
+                                  }); 
+                              }} className="w-full py-2 bg-green-600 text-white rounded-lg font-bold">Mark as Completed</button>}
                              
                              {order.status === 'Cancellation Requested' && (
                                 <div className="mt-4 p-4 bg-red-50 rounded-xl border border-red-100">
@@ -2266,6 +2275,11 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
             if (providerId === 'password') {
                 const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
                 await auth.currentUser.reauthenticateWithCredential(credential);
+            } else if (providerId) {
+                // If social user
+                setErrorMessage(`Accounts using ${providerId} manage their password through their provider.`);
+                setIsChangingPassword(false);
+                return;
             }
             
             // Then update the password
@@ -2276,7 +2290,8 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
             setNewPassword('');
             setConfirmNewPassword('');
         } catch (error: any) {
-            if (error.code === 'auth/wrong-password') {
+            console.error("Password change error:", error);
+            if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                 setErrorMessage("Incorrect current password.");
             } else if (error.code === 'auth/requires-recent-login') {
                 setErrorMessage("For your security, please log out and log back in, then try changing your password again.");
@@ -2453,7 +2468,7 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2">
                                                      <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 ${
-                                                         order.status === 'Delivered' ? 'bg-green-100 text-green-700' : 
+                                                         order.status === 'Delivered' || order.status === 'Completed' ? 'bg-green-100 text-green-700' : 
                                                          order.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
                                                          order.status === 'Cancellation Requested' ? 'bg-orange-100 text-orange-700' :
                                                          'bg-blue-100 text-blue-700'
@@ -4437,7 +4452,7 @@ const OrderSuccessPage: React.FC<{ onNavigate: (path: string) => void }> = ({ on
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<UserState | null>(null);
-  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [editingPaymentIndex, setEditingPaymentIndex] = useState<number | null>(null);
@@ -4590,7 +4605,11 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-      handleRefreshProducts();
+    const init = async () => {
+        await seedDatabase();
+        handleRefreshProducts();
+    };
+    init();
   }, []);
 
   const handleNavigate = (path: string) => {
@@ -4735,6 +4754,12 @@ export const App: React.FC = () => {
                           <h3 className="text-sm font-medium text-red-800">Connection Error</h3>
                           <div className="mt-2 text-sm text-red-700">
                               <p>{productsError}</p>
+                              <button 
+                                onClick={handleRefreshProducts}
+                                className="mt-2 bg-red-100 text-red-800 px-3 py-1 rounded font-bold hover:bg-red-200 transition-colors"
+                              >
+                                Try Again
+                              </button>
                           </div>
                       </div>
                   </div>

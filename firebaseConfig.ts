@@ -4,8 +4,9 @@ import "firebase/compat/firestore";
 import "firebase/compat/storage";
 
 // TODO: Replace these values with your actual Firebase Project keys
-// You can find these in the Firebase Console -> Project Settings -> General -> Your Apps -> SDK Setup
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// IMPORTANT: If you get "auth/invalid-credential" or popup errors, make sure to add 
+// your development and staging URLs to the "Authorized domains" list in:
+// Firebase Console -> Authentication -> Settings -> Authorized domains
 const firebaseConfig = {
   apiKey: "AIzaSyDhpG7UUn_JY4ILv5SaK6ZphixMQLZoZvw",
   authDomain: "tatak-norte.firebaseapp.com",
