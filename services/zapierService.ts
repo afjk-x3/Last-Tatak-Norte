@@ -60,8 +60,7 @@ export const zapierNewOrder = (
     shippingBarangay: shippingAddress.barangay,
     shippingCity: shippingAddress.city,
     shippingProvince: shippingAddress.province,
-    shippingZip: shippingAddress.zipCode,
-    shippingPhone: shippingAddress.phone || '', 
+    shippingPhone: shippingAddress.mobileNumber || '', 
     
     senderName: 'Tatak Norte',
     senderAddress: 'Batac City, Ilocos Norte',

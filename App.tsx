@@ -3957,6 +3957,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
       setError(null);
       setIsVerificationSent(false);
       setIsResetSent(false);
+      setEmail('');
+      setPassword('');
+      setFullName('');
       setMode(defaultMode);
       setShowPassword(false);
     }
@@ -3965,7 +3968,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
   if (!isOpen) return null;
 
   const getErrorMessage = (err: any) => {
-    const code = err.code;
+    const code = err?.code || '';
+    const msg = err?.message || '';
+    
+    // Check for cancellation codes or messages
+    if (code === 'auth/cancelled-popup-request' || 
+        code === 'auth/popup-closed-by-user' ||
+        msg.includes('cancelled-popup-request') ||
+        msg.includes('popup-closed-by-user')) {
+      return 'Sign in cancelled.';
+    }
+
     switch (code) {
       case 'auth/email-already-in-use': return 'This email is already registered. Please Log In instead.';
       case 'auth/invalid-email': return 'Please enter a valid email address.';
@@ -3973,9 +3986,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
       case 'auth/user-not-found': return 'No account found with this email.';
       case 'auth/wrong-password': return 'Incorrect password.';
       case 'auth/invalid-credential': return 'Invalid email or password. Please try again.';
-      case 'auth/popup-closed-by-user': return 'Sign in cancelled.';
       case 'auth/operation-not-supported-in-this-environment': return 'Authentication is restricted in this environment.';
-      default: return err.message || 'An error occurred. Please try again.';
+      default: return msg || 'An error occurred. Please try again.';
     }
   };
 
@@ -4140,9 +4152,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                 </div>
 
                 {error && (
-                    <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-xl text-sm flex items-start gap-3 animate-fade-in-up">
-                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                        <span>{error}</span>
+                    <div className={`mb-6 p-4 border-l-4 rounded-r-xl text-sm flex items-start gap-3 animate-fade-in-up ${error === 'Sign in cancelled.' ? 'bg-amber-50 border-brand-accent/50 text-amber-800' : 'bg-red-50 border-red-500 text-red-700'}`}>
+                        {error === 'Sign in cancelled.' ? <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-500" /> : <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />}
+                        <div className="flex flex-col gap-1">
+                            <span className="font-bold">{error === 'Sign in cancelled.' ? 'Notice' : 'Error'}</span>
+                            <span>{error}</span>
+                        </div>
                     </div>
                 )}
 

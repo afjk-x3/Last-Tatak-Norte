@@ -44,7 +44,11 @@ if (!isFirebaseConfigured()) {
   db.collection('test').doc('connection').get({ source: 'server' })
     .then(() => console.log("🔥 Firestore connected successfully"))
     .catch((error) => {
-      console.error("🔥 Firestore connection failed:", error.message);
+      if (error.message.includes('insufficient permissions')) {
+        console.log("🔥 Firestore connection: Permissions required. Make sure to paste the generated firestore.rules to your Firebase Console.");
+      } else {
+        console.error("🔥 Firestore connection failed:", error.message);
+      }
       if (error.message.includes('unavailable')) {
         console.info("💡 Tip: This often happens due to networking constraints in the preview. Long polling is enabled to help.");
       }
