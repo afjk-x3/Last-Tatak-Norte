@@ -543,6 +543,19 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
     const [sellersList, setSellersList] = useState<UserProfile[]>([]);
     const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
     const [orderStatusFilter, setOrderStatusFilter] = useState<string>('All');
+    const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+
+    const toggleOrderId = (id: string) => {
+        setExpandedOrderIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
     
     // Filters
     const [productCategoryFilter, setProductCategoryFilter] = useState<string>('All');
@@ -837,7 +850,16 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                                         <div key={order.id} className="flex justify-between items-center p-4 rounded-xl hover:bg-stone-50 border border-stone-100 transition-colors cursor-pointer" onClick={() => setActiveTab('orders')}>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-stone-900">Order #{order.id.slice(-6).toUpperCase()}</span>
+                                                    <span 
+                                                        className="font-bold text-stone-900 cursor-pointer hover:text-brand-blue transition-colors"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleOrderId(order.id);
+                                                        }}
+                                                        title={expandedOrderIds.has(order.id) ? "Click to collapse" : "Click to view full ID"}
+                                                    >
+                                                        Order #{expandedOrderIds.has(order.id) ? order.id : order.id.slice(-6) + '...'}
+                                                    </span>
                                                     <span className="text-xs text-stone-400">• {new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
                                                 </div>
                                                 <p className="text-sm text-stone-500 mt-1">{order.items.length} items • ₱{order.totalAmount.toLocaleString()}</p>
@@ -1168,7 +1190,16 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
                     {orders.filter(order => orderStatusFilter === 'All' || order.status === orderStatusFilter).map(order => (
                         <div key={order.id} className="bg-white p-6 rounded-2xl border border-stone-200">
                              <div className="flex justify-between mb-4">
-                                 <div><span className="font-bold text-lg">Order #{order.id.slice(-6)}</span><p className="text-sm text-stone-500">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</p></div>
+                                 <div>
+                                     <span 
+                                         className="font-bold text-lg cursor-pointer hover:text-brand-blue transition-colors"
+                                         onClick={() => toggleOrderId(order.id)}
+                                         title={expandedOrderIds.has(order.id) ? "Click to collapse" : "Click to view full ID"}
+                                     >
+                                         Order #{expandedOrderIds.has(order.id) ? order.id : order.id.slice(-6) + '...'}
+                                     </span>
+                                     <p className="text-sm text-stone-500">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</p>
+                                 </div>
                                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
                                      order.status === 'Delivered' || order.status === 'Completed' ? 'bg-green-100 text-green-700' : 
                                      order.status === 'Cancelled' ? 'bg-red-100 text-red-700' :
@@ -1330,11 +1361,44 @@ const Dashboard: React.FC<any> = ({ user, products, onUpdateProfile, onRefreshGl
     );
 };
 
-const CartPage: React.FC<any> = ({ cart, onUpdateQuantity, onRemove, onCheckoutClick, onContinueShopping }) => {
-    const total = cart.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
+const CartPage: React.FC<any> = ({ 
+    cart, 
+    onUpdateQuantity, 
+    onRemove, 
+    onCheckoutClick, 
+    onContinueShopping,
+    selectedItems,
+    onToggleSelection,
+    onToggleSelectAll
+}) => {
+    const selectedCart = cart.filter((item: any) => selectedItems.has(item.id + (item.selectedVariation?.id || '')));
+    const total = selectedCart.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
+    const isAllSelected = cart.length > 0 && selectedItems.size === cart.length;
+
     return (
         <div className="max-w-7xl mx-auto px-4 py-12 animate-fade-in-up">
-            <h1 className="font-serif text-4xl font-bold mb-8 text-brand-blue">Shopping Bag</h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <h1 className="font-serif text-4xl font-bold text-brand-blue">Shopping Bag</h1>
+                {cart.length > 0 && (
+                    <button 
+                        onClick={onToggleSelectAll}
+                        className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-stone-100 shadow-sm hover:border-brand-blue/30 transition-colors group"
+                    >
+                        <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${isAllSelected ? 'bg-brand-blue border-brand-blue shadow-md shadow-blue-900/20' : 'border-stone-200 group-hover:border-brand-blue/50 bg-stone-50/50'}`}>
+                            {isAllSelected && (
+                                <motion.div
+                                    initial={{ scale: 0, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                >
+                                    <Check className="w-4 h-4 text-white stroke-[3px]" />
+                                </motion.div>
+                            )}
+                        </div>
+                        <span className="text-stone-600 font-bold select-none">Select All Products</span>
+                    </button>
+                )}
+            </div>
             {cart.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-3xl border border-stone-100 shadow-sm">
                     <ShoppingBag className="w-20 h-20 mx-auto mb-6 text-stone-200" />
@@ -1345,28 +1409,58 @@ const CartPage: React.FC<any> = ({ cart, onUpdateQuantity, onRemove, onCheckoutC
             ) : (
                 <div className="flex flex-col lg:flex-row gap-8">
                     <div className="flex-1 space-y-6">
-                        {cart.map((item: any) => (
-                            <div key={`${item.id}-${item.selectedVariation?.id || 'standard'}`} className="bg-white p-6 rounded-2xl border border-stone-100 shadow-sm flex gap-6 items-center hover:shadow-md transition-shadow">
-                                <img src={item.image} className="w-32 h-32 rounded-xl object-cover bg-stone-50" />
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <h3 className="font-bold text-lg text-stone-900">{item.name}</h3>
-                                            <p className="text-sm text-stone-500">{item.selectedVariation?.name || 'Standard'}</p>
+                        {cart.map((item: any) => {
+                            const isSelected = selectedItems.has(item.id + (item.selectedVariation?.id || ''));
+                            return (
+                                <div key={`${item.id}-${item.selectedVariation?.id || 'standard'}`} className={`bg-white p-6 rounded-2xl border transition-all flex gap-4 md:gap-6 items-center hover:shadow-md ${isSelected ? 'border-brand-blue/30 ring-1 ring-brand-blue/5 bg-blue-50/5' : 'border-stone-100 shadow-sm'}`}>
+                                    <button 
+                                        onClick={() => onToggleSelection(item.id, item.selectedVariation?.id)}
+                                        className="flex-shrink-0"
+                                    >
+                                        <div className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? 'bg-brand-blue border-brand-blue shadow-md shadow-blue-900/20' : 'border-stone-200 hover:border-brand-blue/50 bg-stone-50/50'}`}>
+                                            {isSelected && (
+                                                <motion.div
+                                                    initial={{ scale: 0, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                >
+                                                    <Check className="w-4.5 h-4.5 text-white stroke-[3px]" />
+                                                </motion.div>
+                                            )}
                                         </div>
-                                        <button onClick={() => onRemove(item.id, item.selectedVariation?.id)} className="text-stone-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                                    </div>
-                                    <div className="flex justify-between items-end mt-4">
-                                        <p className="text-brand-blue font-bold text-xl">₱{item.price.toLocaleString()}</p>
-                                        <div className="flex items-center gap-4 bg-stone-50 rounded-lg p-1 border border-stone-200">
-                                            <button onClick={() => onUpdateQuantity(item.id, item.selectedVariation?.id, -1)} className="p-1 hover:bg-white rounded-md transition-colors"><Minus className="w-4 h-4" /></button>
-                                            <span className="font-bold w-4 text-center">{item.quantity}</span>
-                                            <button onClick={() => onUpdateQuantity(item.id, item.selectedVariation?.id, 1)} className="p-1 hover:bg-white rounded-md transition-colors"><Plus className="w-4 h-4" /></button>
+                                    </button>
+                                    <img src={item.image} className="w-24 h-24 md:w-32 md:h-32 rounded-xl object-cover bg-stone-50" />
+                                    <div className="flex-1">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <h3 className="font-bold text-lg text-stone-900">{item.name}</h3>
+                                                <p className="text-sm text-stone-500">{item.selectedVariation?.name || 'Standard'}</p>
+                                            </div>
+                                            <button onClick={() => onRemove(item.id, item.selectedVariation?.id)} className="text-stone-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
+                                        </div>
+                                        <div className="flex justify-between items-end mt-4">
+                                            <p className="text-brand-blue font-bold text-xl">₱{item.price.toLocaleString()}</p>
+                                            <div className="flex items-center gap-2 bg-stone-50 rounded-lg p-1 border border-stone-200">
+                                                <button onClick={() => onUpdateQuantity(item.id, item.selectedVariation?.id, -1)} className="p-1 hover:bg-white rounded-md transition-colors"><Minus className="w-4 h-4" /></button>
+                                                <input 
+                                                    type="number" 
+                                                    min="1" 
+                                                    value={item.quantity}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value);
+                                                        if (!isNaN(val) && val >= 1) {
+                                                            onUpdateQuantity(item.id, item.selectedVariation?.id, val - item.quantity);
+                                                        }
+                                                    }}
+                                                    className="font-bold w-12 text-center bg-transparent border-none focus:ring-0 p-0 text-sm"
+                                                />
+                                                <button onClick={() => onUpdateQuantity(item.id, item.selectedVariation?.id, 1)} className="p-1 hover:bg-white rounded-md transition-colors"><Plus className="w-4 h-4" /></button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     <div className="w-full lg:w-96 bg-white p-8 rounded-3xl border border-stone-100 shadow-lg h-fit">
                         <h3 className="text-xl font-bold mb-6">Order Summary</h3>
@@ -1384,7 +1478,13 @@ const CartPage: React.FC<any> = ({ cart, onUpdateQuantity, onRemove, onCheckoutC
                                 <span>₱{total.toLocaleString()}</span>
                             </div>
                         </div>
-                        <button onClick={onCheckoutClick} className="w-full py-4 bg-brand-blue text-white rounded-xl font-bold hover:bg-blue-800 transition-colors shadow-lg shadow-blue-900/20">Proceed to Checkout</button>
+                        <button 
+                            onClick={onCheckoutClick} 
+                            disabled={selectedCart.length === 0}
+                            className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg ${selectedCart.length === 0 ? 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none' : 'bg-brand-blue text-white hover:bg-blue-800 shadow-blue-900/20'}`}
+                        >
+                            Proceed to Checkout {selectedCart.length > 0 && `(${selectedCart.length})`}
+                        </button>
                         <button onClick={onContinueShopping} className="w-full mt-4 py-2 text-stone-500 font-bold text-sm hover:text-brand-blue">Continue Shopping</button>
                     </div>
                 </div>
@@ -1955,6 +2055,19 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
     const [selectedTrackingOrder, setSelectedTrackingOrder] = useState<Order | null>(null);
     const [orderFilter, setOrderFilter] = useState('All');
     const [orderSort, setOrderSort] = useState('latest');
+    const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+
+    const toggleOrderId = (id: string) => {
+        setExpandedOrderIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
@@ -2311,22 +2424,23 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
         setIsChangingPassword(true);
         setErrorMessage(null);
         try {
-            // First re-authenticate if user logged in via email/password
-            const providerId = auth.currentUser.providerData[0]?.providerId;
-            if (providerId === 'password') {
+            const providers = auth.currentUser.providerData.map(p => p.providerId);
+            const hasPasswordProvider = providers.includes('password');
+            
+            if (hasPasswordProvider) {
+                if (!currentPassword) {
+                    setErrorMessage("Please enter your current password.");
+                    setIsChangingPassword(false);
+                    return;
+                }
                 const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
                 await auth.currentUser.reauthenticateWithCredential(credential);
-            } else if (providerId) {
-                // If social user
-                setErrorMessage(`Accounts using ${providerId} manage their password through their provider.`);
-                setIsChangingPassword(false);
-                return;
             }
             
             // Then update the password
             await auth.currentUser.updatePassword(newPassword);
             
-            showSuccess("Password changed successfully.");
+            showSuccess(hasPasswordProvider ? "Password changed successfully." : "Password set successfully. You can now also log in with your email and password.");
             setCurrentPassword('');
             setNewPassword('');
             setConfirmNewPassword('');
@@ -2557,7 +2671,17 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                                                 <div className="flex flex-wrap justify-between items-start gap-4 mb-6 border-b border-stone-100 pb-4">
                                                     <div>
                                                         <div className="flex items-center gap-3 mb-1">
-                                                            <span className="font-bold text-xl text-stone-900">#{order.id.slice(-6).toUpperCase()}</span>
+                                                            <span className="font-bold text-xl text-stone-900">
+                                                                #
+                                                                <span 
+                                                                    onClick={() => toggleOrderId(order.id)}
+                                                                    className="cursor-pointer hover:text-brand-blue transition-colors group relative"
+                                                                    title={expandedOrderIds.has(order.id) ? "Click to collapse" : "Click to view full ID"}
+                                                                >
+                                                                    {expandedOrderIds.has(order.id) ? order.id : `${order.id.slice(-6)}...`}
+                                                                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-brand-blue/30 group-hover:w-full transition-all"></span>
+                                                                </span>
+                                                            </span>
                                                             <span className="text-sm text-stone-400">• {new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
                                                         </div>
                                                         <div className="text-sm text-stone-500">
@@ -2844,53 +2968,60 @@ const ProfilePage: React.FC<any> = ({ user, onUpdateProfile, onNavigate, onOpenP
                                                 </div>
                                                 <div className="flex-1 w-full max-w-md">
                                                     <h3 className="text-lg font-bold text-stone-900 mb-1">Change Password</h3>
-                                                    {auth.currentUser?.providerData[0]?.providerId === 'password' ? (
-                                                        <form onSubmit={handleChangePasswordSubmit} className="mt-4 space-y-4">
-                                                            <div>
-                                                                <label className="block text-xs font-bold text-stone-500 mb-1 uppercase tracking-wider">Current Password</label>
-                                                                <input 
-                                                                    type="password" 
-                                                                    value={currentPassword}
-                                                                    onChange={(e) => setCurrentPassword(e.target.value)}
-                                                                    required
-                                                                    className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-xs font-bold text-stone-500 mb-1 uppercase tracking-wider">New Password</label>
-                                                                <input 
-                                                                    type="password" 
-                                                                    value={newPassword}
-                                                                    onChange={(e) => setNewPassword(e.target.value)}
-                                                                    required
-                                                                    minLength={6}
-                                                                    className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-xs font-bold text-stone-500 mb-1 uppercase tracking-wider">Confirm New Password</label>
-                                                                <input 
-                                                                    type="password" 
-                                                                    value={confirmNewPassword}
-                                                                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                                                                    required
-                                                                    minLength={6}
-                                                                    className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
-                                                                />
-                                                            </div>
-                                                            <button 
-                                                                type="submit" 
-                                                                disabled={isChangingPassword}
-                                                                className="px-6 py-2.5 bg-brand-blue text-white rounded-xl font-bold hover:bg-blue-800 transition-colors shadow-sm disabled:opacity-50"
-                                                            >
-                                                                {isChangingPassword ? 'Updating...' : 'Update Password'}
-                                                            </button>
-                                                        </form>
-                                                    ) : (
-                                                        <p className="text-sm text-stone-500 mb-4 mt-2">
-                                                            Your account is associated with a third-party login provider (e.g., Google or Facebook). Please change your password through them.
-                                                        </p>
-                                                    )}
+                                                    {(() => {
+                                                        const hasPasswordProvider = auth.currentUser?.providerData.some(p => p.providerId === 'password');
+                                                        return (
+                                                            <form onSubmit={handleChangePasswordSubmit} className="mt-4 space-y-4">
+                                                                {hasPasswordProvider ? (
+                                                                    <div>
+                                                                        <label className="block text-xs font-bold text-stone-500 mb-1 uppercase tracking-wider">Current Password</label>
+                                                                        <input 
+                                                                            type="password" 
+                                                                            value={currentPassword}
+                                                                            onChange={(e) => setCurrentPassword(e.target.value)}
+                                                                            required
+                                                                            className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-sm text-stone-500 mb-2">
+                                                                        You are currently using Google or Facebook. Set a password to also log in with your email.
+                                                                    </p>
+                                                                )}
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-stone-500 mb-1 uppercase tracking-wider">
+                                                                        {hasPasswordProvider ? 'New Password' : 'Set Password'}
+                                                                    </label>
+                                                                    <input 
+                                                                        type="password" 
+                                                                        value={newPassword}
+                                                                        onChange={(e) => setNewPassword(e.target.value)}
+                                                                        required
+                                                                        minLength={6}
+                                                                        className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-stone-500 mb-1 uppercase tracking-wider">Confirm {hasPasswordProvider ? 'New' : ''} Password</label>
+                                                                    <input 
+                                                                        type="password" 
+                                                                        value={confirmNewPassword}
+                                                                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                                                        required
+                                                                        minLength={6}
+                                                                        className="w-full px-4 py-2 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
+                                                                    />
+                                                                </div>
+                                                                <button 
+                                                                    type="submit" 
+                                                                    disabled={isChangingPassword}
+                                                                    className="px-6 py-2.5 bg-brand-blue text-white rounded-xl font-bold hover:bg-blue-800 transition-colors shadow-sm disabled:opacity-50"
+                                                                >
+                                                                    {isChangingPassword ? 'Updating...' : hasPasswordProvider ? 'Update Password' : 'Set Password'}
+                                                                </button>
+                                                            </form>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>
@@ -3308,9 +3439,19 @@ const ProductDetailsPage: React.FC<any> = ({ product, onAddToCart, onNavigate, u
                                     >
                                         <Minus className="w-4 h-4" />
                                     </button>
-                                    <div className="px-6 py-2 font-bold text-stone-900 min-w-[60px] text-center">
-                                        {quantity}
-                                    </div>
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        max={selectedVariation?.stock || 999}
+                                        value={quantity}
+                                        onChange={(e) => {
+                                            const val = parseInt(e.target.value);
+                                            if (!isNaN(val)) {
+                                                setQuantity(Math.max(1, Math.min(val, selectedVariation?.stock || 999)));
+                                            }
+                                        }}
+                                        className="px-2 py-2 font-bold text-stone-900 w-16 text-center bg-transparent border-none focus:ring-0"
+                                    />
                                     <button 
                                         onClick={() => setQuantity(quantity + 1)}
                                         className="p-3 hover:bg-stone-50 text-stone-500 transition-colors border-l border-stone-100"
@@ -3782,7 +3923,10 @@ const MarketplacePage: React.FC<any> = ({ products, onNavigate, onAddToCart }) =
         const isActive = p.sellerStatus !== 'suspended' && p.sellerStatus !== 'banned';
         // Add Admin Status Check
         const isAdminActive = p.adminStatus !== 'suspended' && p.adminStatus !== 'deleted';
-        return matchSearch && matchCategory && isActive && isAdminActive;
+        const hasStock = p.variations && p.variations.length > 0 
+            ? p.variations.some((v: any) => (v.stock || 0) > 0)
+            : (p.stock || 0) > 0;
+        return matchSearch && matchCategory && isActive && isAdminActive && hasStock;
     });
 
     return (
@@ -3880,12 +4024,16 @@ const HomePage: React.FC<any> = ({ products, onNavigate, onAddToCart, user }) =>
     }
     
     // Filter out suspended products for Customer View
-    const availableProducts = products.filter((p: any) => 
-        p.sellerStatus !== 'suspended' && 
-        p.sellerStatus !== 'banned' && 
-        p.adminStatus !== 'suspended' && 
-        p.adminStatus !== 'deleted'
-    );
+    const availableProducts = products.filter((p: any) => {
+        const isActive = p.sellerStatus !== 'suspended' && 
+                         p.sellerStatus !== 'banned' && 
+                         p.adminStatus !== 'suspended' && 
+                         p.adminStatus !== 'deleted';
+        const hasStock = p.variations && p.variations.length > 0
+            ? p.variations.some((v: any) => (v.stock || 0) > 0)
+            : (p.stock || 0) > 0;
+        return isActive && hasStock;
+    });
 
     // Customer View
     return (
@@ -3979,8 +4127,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
       return 'Sign in cancelled.';
     }
 
+    if (code === 'auth/email-already-in-use' || msg.includes('auth/email-already-in-use') || msg.includes('email address is already in use')) {
+      return 'This email is already registered. Please Log In instead.';
+    }
+
+    if (code === 'auth/account-exists-with-different-credential' || msg.includes('account-exists-with-different-credential')) {
+      return 'An account already exists with this email using a different login method (e.g. Email/Password instead of Google). Please log in using that method.';
+    }
+
     switch (code) {
-      case 'auth/email-already-in-use': return 'This email is already registered. Please Log In instead.';
       case 'auth/invalid-email': return 'Please enter a valid email address.';
       case 'auth/weak-password': return 'Password should be at least 6 characters.';
       case 'auth/user-not-found': return 'No account found with this email.';
@@ -4179,6 +4334,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
                         <div className="flex flex-col gap-1">
                             <span className="font-bold">{error === 'Sign in cancelled.' ? 'Notice' : 'Error'}</span>
                             <span>{error}</span>
+                            {error === 'This email is already registered. Please Log In instead.' && mode === 'register' && (
+                                <button 
+                                    onClick={() => {
+                                        setMode('login');
+                                        setError(null);
+                                        if (onModeChange) onModeChange('login');
+                                    }}
+                                    className="text-xs font-bold underline mt-1 text-red-800 hover:text-red-900 text-left"
+                                >
+                                    Switch to Sign In
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
@@ -4351,9 +4518,14 @@ const CheckoutModal: React.FC<{
     const [isProcessing, setIsProcessing] = useState(false);
 
     useEffect(() => {
-        if (isOpen && user?.addresses) {
-            const defaultIdx = user.addresses.findIndex((a: any) => a.isDefault);
-            setSelectedAddressIndex(defaultIdx >= 0 ? defaultIdx : 0);
+        if (isOpen) {
+            setStep(1);
+            setDeliveryMethod('Standard');
+            setPaymentMethod('COD');
+            if (user?.addresses) {
+                const defaultIdx = user.addresses.findIndex((a: any) => a.isDefault);
+                setSelectedAddressIndex(defaultIdx >= 0 ? defaultIdx : 0);
+            }
         }
     }, [isOpen, user?.addresses?.length]);
 
@@ -4697,6 +4869,29 @@ export const App: React.FC = () => {
   };
   const [productsError, setProductsError] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedCartItemIds, setSelectedCartItemIds] = useState<Set<string>>(new Set());
+
+  const toggleCartItemSelection = (id: string, variationId?: string) => {
+    const selectionKey = id + (variationId || '');
+    setSelectedCartItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(selectionKey)) {
+        next.delete(selectionKey);
+      } else {
+        next.add(selectionKey);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllCart = () => {
+    if (selectedCartItemIds.size === cart.length && cart.length > 0) {
+      setSelectedCartItemIds(new Set());
+    } else {
+      const allKeys = cart.map(item => item.id + (item.selectedVariation?.id || ''));
+      setSelectedCartItemIds(new Set(allKeys));
+    }
+  };
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname;
@@ -4765,7 +4960,11 @@ export const App: React.FC = () => {
                       status: updatedProfile.status,
                       suspensionEndDate: updatedProfile.suspensionEndDate
                   } as UserState);
-                  if (updatedProfile.bag) setCart(updatedProfile.bag);
+                  if (updatedProfile.bag) {
+                      setCart(updatedProfile.bag);
+                      const allKeys = updatedProfile.bag.map((item: any) => item.id + (item.selectedVariation?.id || ''));
+                      setSelectedCartItemIds(new Set(allKeys));
+                  }
               } else {
                    setUser({
                       uid: u.uid,
@@ -4848,6 +5047,14 @@ export const App: React.FC = () => {
           newCart.push({ ...item, quantity: item.quantity || 1 });
       }
       setCart(newCart);
+
+      const selectionKey = item.id + (item.selectedVariation?.id || '');
+      setSelectedCartItemIds(prev => {
+          const next = new Set(prev);
+          next.add(selectionKey);
+          return next;
+      });
+
       if (user) await updateUserBag(user.uid, newCart);
   };
 
@@ -4865,17 +5072,32 @@ export const App: React.FC = () => {
   const handleRemoveFromCart = async (itemId: string, variationId: string | undefined) => {
       const newCart = cart.filter(item => !(item.id === itemId && item.selectedVariation?.id === variationId));
       setCart(newCart);
+      
+      const selectionKey = itemId + (variationId || '');
+      if (selectedCartItemIds.has(selectionKey)) {
+          setSelectedCartItemIds(prev => {
+              const next = new Set(prev);
+              next.delete(selectionKey);
+              return next;
+          });
+      }
+
       if (user) await updateUserBag(user.uid, newCart);
   };
 
   const handleCheckout = async (paymentMethod: PaymentMethod, deliveryMethod: DeliveryMethod, address: Address) => {
       if (!user) return;
-      const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0) + (deliveryMethod === 'Standard' ? 120 : 0);
+      const selectedCart = cart.filter(item => selectedCartItemIds.has(item.id + (item.selectedVariation?.id || '')));
+      if (selectedCart.length === 0) return;
+
+      const total = selectedCart.reduce((sum, item) => sum + item.price * item.quantity, 0) + (deliveryMethod === 'Standard' ? 120 : 0);
       
-      await createOrder(user.uid, user.name, cart, total, paymentMethod, deliveryMethod, address);
+      await createOrder(user.uid, user.name, selectedCart, total, paymentMethod, deliveryMethod, address);
       
-      setCart([]);
-      if (user) await updateUserBag(user.uid, []);
+      const remainingCart = cart.filter(item => !selectedCartItemIds.has(item.id + (item.selectedVariation?.id || '')));
+      setCart(remainingCart);
+      setSelectedCartItemIds(new Set()); // Clear selection
+      if (user) await updateUserBag(user.uid, remainingCart);
       navigate('/order-success', { state: { paymentMethod, total } }); 
   };
   
@@ -4933,8 +5155,8 @@ export const App: React.FC = () => {
         <Route path="/" element={<HomePage products={products} onNavigate={handleNavigate} onAddToCart={handleAddToCart} user={user} />} />
         <Route path="/shop" element={<MarketplacePage products={products} onNavigate={handleNavigate} onAddToCart={handleAddToCart} />} />
         <Route path="/about" element={<AboutPage onNavigate={handleNavigate} />} />
-        <Route path="/cart" element={<CartPage cart={cart} onUpdateQuantity={handleUpdateCartQty} onRemove={handleRemoveFromCart} onCheckoutClick={() => navigate('/checkout')} onContinueShopping={() => handleNavigate('/shop')} />} />
-        <Route path="/checkout" element={<CartPage cart={cart} onUpdateQuantity={handleUpdateCartQty} onRemove={handleRemoveFromCart} onCheckoutClick={() => navigate('/checkout')} onContinueShopping={() => handleNavigate('/shop')} />} />
+        <Route path="/cart" element={<CartPage cart={cart} selectedItems={selectedCartItemIds} onToggleSelection={toggleCartItemSelection} onToggleSelectAll={toggleSelectAllCart} onUpdateQuantity={handleUpdateCartQty} onRemove={handleRemoveFromCart} onCheckoutClick={() => navigate('/checkout')} onContinueShopping={() => handleNavigate('/shop')} />} />
+        <Route path="/checkout" element={<CartPage cart={cart} selectedItems={selectedCartItemIds} onToggleSelection={toggleCartItemSelection} onToggleSelectAll={toggleSelectAllCart} onUpdateQuantity={handleUpdateCartQty} onRemove={handleRemoveFromCart} onCheckoutClick={() => navigate('/checkout')} onContinueShopping={() => handleNavigate('/shop')} />} />
         <Route path="/order-success" element={<OrderSuccessPage onNavigate={handleNavigate} />} />
         <Route path="/seller-dashboard" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} setSelectedLabel={setSelectedLabel} />} />
         <Route path="/seller-dashboard/:tab" element={<Dashboard user={user} products={products} onUpdateProfile={handleRefreshUser} onRefreshGlobalData={handleRefreshProducts} setSelectedLabel={setSelectedLabel} />} />
@@ -4952,6 +5174,18 @@ export const App: React.FC = () => {
 
   return (
       <div className="min-h-screen bg-stone-50 font-sans text-stone-800">
+          <style>
+              {`
+              input::-webkit-outer-spin-button,
+              input::-webkit-inner-spin-button {
+                  -webkit-appearance: none;
+                  margin: 0;
+              }
+              input[type=number] {
+                  -moz-appearance: textfield;
+              }
+              `}
+          </style>
           <Navbar 
               cartCount={cart.reduce((a, b) => a + b.quantity, 0)}
               onCartClick={() => handleNavigate('/cart')}
@@ -5018,7 +5252,7 @@ export const App: React.FC = () => {
           <CheckoutModal 
             isOpen={location.pathname === '/checkout'}
             onClose={() => navigate('/cart')}
-            cart={cart}
+            cart={cart.filter(item => selectedCartItemIds.has(item.id + (item.selectedVariation?.id || '')))}
             onCheckoutSubmit={handleCheckout}
             user={user}
             onSaveAddress={handleSaveAddress}
