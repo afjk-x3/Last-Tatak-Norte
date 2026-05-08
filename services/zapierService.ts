@@ -14,7 +14,9 @@ export const zapierNewOrder = (
   totalAmount: number,
   paymentMethod: PaymentMethod,
   deliveryMethod: DeliveryMethod,
-  shippingAddress?: Address
+  shippingAddress?: Address,
+  sellerEmail?: string,
+  sellerName?: string
 ) => {
   // Only fire for specific payment methods
   if (paymentMethod !== 'GCash' && paymentMethod !== 'Credit/Debit Card' && paymentMethod !== 'COD') {
@@ -60,9 +62,10 @@ export const zapierNewOrder = (
     shippingBarangay: shippingAddress.barangay,
     shippingCity: shippingAddress.city,
     shippingProvince: shippingAddress.province,
-    shippingPhone: shippingAddress.mobileNumber || '', 
+    shippingPhone: shippingAddress.mobileNumber,
+    sellerEmail: sellerEmail || '', 
     
-    senderName: 'Tatak Norte',
+    senderName: sellerName || 'Tatak Norte',
     senderAddress: 'Batac City, Ilocos Norte',
     carrier: 'J&T Express',
     timestamp: new Date().toISOString(),

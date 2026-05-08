@@ -6,7 +6,7 @@ import Navbar from './components/Navbar';
 import { PRODUCTS } from './constants'; 
 import { Product, CartItem, Category, UserRole, UserProfile, Order, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, BankAccount, Variation, TrackingEvent, SellerApplication, ShippingLabel, PaymentCredential } from './types';
 import { Star, ArrowRight, Trash2, Plus, Minus, MapPin, X, ShoppingBag, Facebook, CheckCircle, Loader, Eye, EyeOff, LayoutDashboard, Package, TrendingUp, Users, AlertCircle, ShieldCheck, Ban, ChevronLeft, Tag, Search, ShoppingCart, CreditCard, ChevronDown, UserCircle, Edit3, Save, Camera, Mail, MessageSquare, Truck, Banknote, Bell, FileText, Lock, Settings, Check, Filter, SlidersHorizontal, Award, ChevronRight, User, Store, Send, ChevronUp, Image as ImageIcon, Printer, AlertTriangle, Phone, Globe, Instagram, Twitter, Calendar, Heart, Hammer, Leaf, LogIn, PauseCircle, ShieldBan, PlayCircle, MessageCircle, CornerDownRight, BarChart3, DollarSign, PackageCheck, Clock, Archive, ArrowUpRight } from 'lucide-react';
-import firebase, { auth, isFirebaseConfigured } from './firebaseConfig';
+import firebase, { auth, db, isFirebaseConfigured } from './firebaseConfig';
 import { fetchProducts, seedDatabase, createUserDocument, getUserProfile, fetchSellerProducts, addProduct, deleteProduct, fetchAllUsers, updateUserRole, deleteUserDocument, createOrder, fetchOrders, updateOrderStatus, updateUserBag, updateUserProfile, addProductReview, fetchProductReviews, uploadProfileImage, uploadShopImage, startConversation, uploadProductImage, updateProduct, updateOrderTracking, fetchJtTracking, submitSellerApplication, fetchSellerApplications, approveSellerApplication, rejectSellerApplication, requestOrderCancellation, approveOrderCancellation, fetchApprovedSellers, updateUserStatus, checkSuspensionExpiry, replyToReview, deleteReview, updateProductAdminStatus, checkIfUserCanReview } from './services/firestoreService';
 import { fetchProvinces, fetchCities, fetchBarangays, LocationCode } from './services/locationService';
 import ChatAssistant from './components/ChatAssistant';
@@ -3997,8 +3997,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
     setError(null);
     const lowerEmail = email.toLowerCase();
     const isInternalDomain = lowerEmail.endsWith('@tataknorte.ph');
-    const isSetupAccount = lowerEmail.startsWith('admin') || lowerEmail.startsWith('seller');
-    if (mode === 'register' && isInternalDomain && !isSetupAccount) { setError("Registration restricted. Only 'admin*' or 'seller*' accounts can use the @tataknorte.ph domain."); setIsLoading(false); return; }
+    const isAdminAccount = lowerEmail.startsWith('admin');
+    if (isInternalDomain && !isAdminAccount) { 
+      setError("Access restricted. Only 'admin*' accounts can use the @tataknorte.ph domain."); 
+      setIsLoading(false); 
+      return; 
+    }
     if (!isFirebaseConfigured()) { setError("System Error: Database not configured."); setIsLoading(false); return; }
     try {
       if (mode === 'login') {
@@ -4050,6 +4054,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
       if (providerName === 'Google') { provider.addScope('email'); provider.addScope('profile'); } else { provider.addScope('email'); provider.addScope('public_profile'); }
       const result = await auth.signInWithPopup(provider);
       if (result.user) {
+        const lowerEmail = (result.user.email || '').toLowerCase();
+        const isInternalDomain = lowerEmail.endsWith('@tataknorte.ph');
+        const isAdminAccount = lowerEmail.startsWith('admin');
+        
+        if (isInternalDomain && !isAdminAccount) {
+            setError("Access restricted. Only 'admin*' accounts can use the @tataknorte.ph domain.");
+            await auth.signOut();
+            setIsLoading(false);
+            return;
+        }
+
         const profile = await getUserProfile(result.user.uid);
          if (profile?.status === 'banned') {
               setError("This account has been banned.");
@@ -4067,7 +4082,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess, 
               }
           }
 
-        if (!profile) await createUserDocument(result.user);
+        if (!profile) {
+            await createUserDocument(result.user);
+        } else {
+            await db.collection('users').doc(result.user.uid).update({ 
+                email: result.user.email || '', 
+                displayName: result.user.displayName || profile.displayName 
+            });
+        }
         const updatedProfile = await getUserProfile(result.user.uid);
 
         onLoginSuccess({ uid: result.user.uid, name: result.user.displayName || 'User', email: result.user.email || '', emailVerified: result.user.emailVerified, role: updatedProfile?.role || 'customer', photoURL: updatedProfile?.photoURL, bag: updatedProfile?.bag || [], createdAt: updatedProfile?.createdAt, addresses: updatedProfile?.addresses || [], shopName: updatedProfile?.shopName, shopAddress: updatedProfile?.shopAddress, shopProvince: updatedProfile?.shopProvince, shopCity: updatedProfile?.shopCity, shopBarangay: updatedProfile?.shopBarangay, shopImage: updatedProfile?.shopImage, status: updatedProfile?.status, suspensionEndDate: updatedProfile?.suspensionEndDate } as UserState);
@@ -4685,6 +4707,17 @@ export const App: React.FC = () => {
   useEffect(() => {
       const unsubscribe = auth.onAuthStateChanged(async (u) => {
           if (u) {
+              const lowerEmail = (u.email || '').toLowerCase();
+              const isInternalDomain = lowerEmail.endsWith('@tataknorte.ph');
+              const isAdminAccount = lowerEmail.startsWith('admin');
+              
+              if (isInternalDomain && !isAdminAccount) {
+                  alert("Access restricted. Only 'admin*' accounts can use the @tataknorte.ph domain.");
+                  auth.signOut();
+                  setUser(null);
+                  return;
+              }
+
               const profile = await getUserProfile(u.uid);
               if (profile) {
                   if (profile.status === 'banned') {

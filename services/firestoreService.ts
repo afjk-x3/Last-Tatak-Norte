@@ -606,9 +606,7 @@ export const approveSellerApplication = async (application: SellerApplication): 
         batch.update(appRef, { status: 'approved' });
 
         // 2. Update User Profile
-        // Assign the mock username email format as requested
-        const cleanBusinessName = application.businessName.toLowerCase().replace(/\s+/g, '');
-        const sellerEmail = `${cleanBusinessName}@tataknorte.ph`;
+        const sellerEmail = application.email;
 
         const userRef = db.collection(USERS_COLLECTION).doc(application.userId);
         batch.update(userRef, {
@@ -731,6 +729,25 @@ export const createOrder = async (
 
         // Send notification via Zapier webhook (non-blocking)
         const customerEmail = auth.currentUser?.email || '';
+
+        // Fetch seller email and name from the first seller in the order
+        let sellerEmail = '';
+        let sellerName = '';
+        if (sellerIds.length > 0) {
+            const sellerDoc = await db.collection('users').doc(sellerIds[0]).get()
+            if (sellerDoc.exists) {
+                const sellerData = sellerDoc.data() as UserProfile;
+                const rawSellerEmail = sellerData.sellerEmail || sellerData.email || '';
+                sellerName = sellerData.shopName || sellerData.displayName || '';
+                
+                // Security/Cleanup: If sellerEmail is the old mock domain, fallback to real email
+                if (rawSellerEmail.toLowerCase().endsWith('@tataknorte.ph') && !rawSellerEmail.toLowerCase().startsWith('admin')) {
+                    sellerEmail = sellerData.email || '';
+                } else {
+                    sellerEmail = rawSellerEmail;
+                }
+            }
+        }
         zapierNewOrder(
             orderRef.id,
             userId,
@@ -740,7 +757,9 @@ export const createOrder = async (
             totalAmount,
             paymentMethod,
             deliveryMethod,
-            shippingAddress
+            shippingAddress,
+            sellerEmail,
+            sellerName
         );
 
         return orderRef.id;
@@ -1196,8 +1215,6 @@ export const createUserDocument = async (user: any, additionalData: any = {}) =>
         if (lowerEmail.endsWith('@tataknorte.ph')) {
             if (lowerEmail.startsWith('admin')) {
                 role = 'admin';
-            } else if (lowerEmail.startsWith('seller')) {
-                role = 'seller';
             }
         }
     }
