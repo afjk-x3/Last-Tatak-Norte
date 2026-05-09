@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ShippingLabel } from '../types';
+import { ShippingLabel } from '@/types';
 
 interface ShippingLabelModalProps {
   label: ShippingLabel;

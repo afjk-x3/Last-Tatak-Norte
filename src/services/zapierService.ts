@@ -1,4 +1,4 @@
-import { CartItem, PaymentMethod, DeliveryMethod, Address, Order } from '../types';
+import { CartItem, PaymentMethod, DeliveryMethod, Address, Order } from '@/types';
 
 /**
  * Sends a notification to Zapier when a new order is created.

@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ShoppingBag, Menu, X, User, LogOut, LayoutDashboard, UserCircle, Store } from 'lucide-react';
-import { NAV_LINKS } from '../constants';
-import { UserRole } from '../types';
+import { NAV_LINKS } from '@/constants';
+import { UserRole } from '@/types';
 
 interface NavbarProps {
   cartCount: number;

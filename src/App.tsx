@@ -2,17 +2,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import { PRODUCTS } from './constants'; 
-import { Product, CartItem, Category, UserRole, UserProfile, Order, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, BankAccount, Variation, TrackingEvent, SellerApplication, ShippingLabel, PaymentCredential } from './types';
+import Navbar from '@/components/Navbar';
+import { PRODUCTS } from '@/constants'; 
+import { Product, CartItem, Category, UserRole, UserProfile, Order, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, BankAccount, Variation, TrackingEvent, SellerApplication, ShippingLabel, PaymentCredential } from '@/types';
 import { Star, ArrowRight, Trash2, Plus, Minus, MapPin, X, ShoppingBag, Facebook, CheckCircle, Loader, Eye, EyeOff, LayoutDashboard, Package, TrendingUp, Users, AlertCircle, ShieldCheck, Ban, ChevronLeft, Tag, Search, ShoppingCart, CreditCard, ChevronDown, UserCircle, Edit3, Save, Camera, Mail, MessageSquare, Truck, Banknote, Bell, FileText, Lock, Settings, Check, Filter, SlidersHorizontal, Award, ChevronRight, User, Store, Send, ChevronUp, Image as ImageIcon, Printer, AlertTriangle, Phone, Globe, Instagram, Twitter, Calendar, Heart, Hammer, Leaf, LogIn, PauseCircle, ShieldBan, PlayCircle, MessageCircle, CornerDownRight, BarChart3, DollarSign, PackageCheck, Clock, Archive, ArrowUpRight } from 'lucide-react';
-import firebase, { auth, db, isFirebaseConfigured } from './firebaseConfig';
-import { fetchProducts, seedDatabase, createUserDocument, getUserProfile, fetchSellerProducts, addProduct, deleteProduct, fetchAllUsers, updateUserRole, deleteUserDocument, createOrder, fetchOrders, updateOrderStatus, updateUserBag, updateUserProfile, addProductReview, fetchProductReviews, uploadProfileImage, uploadShopImage, startConversation, uploadProductImage, updateProduct, updateOrderTracking, fetchJtTracking, submitSellerApplication, fetchSellerApplications, approveSellerApplication, rejectSellerApplication, requestOrderCancellation, approveOrderCancellation, fetchApprovedSellers, updateUserStatus, checkSuspensionExpiry, replyToReview, deleteReview, updateProductAdminStatus, checkIfUserCanReview } from './services/firestoreService';
-import { fetchProvinces, fetchCities, fetchBarangays, LocationCode } from './services/locationService';
-import ChatAssistant from './components/ChatAssistant';
-import ShippingLabelModal from './components/ShippingLabelModal';
-import { HERO_COVER } from './assets/images';
-import { triggerShippingLabel } from './services/zapierService';
+import firebase, { auth, db, isFirebaseConfigured } from '@/firebaseConfig';
+import { fetchProducts, seedDatabase, createUserDocument, getUserProfile, fetchSellerProducts, addProduct, deleteProduct, fetchAllUsers, updateUserRole, deleteUserDocument, createOrder, fetchOrders, updateOrderStatus, updateUserBag, updateUserProfile, addProductReview, fetchProductReviews, uploadProfileImage, uploadShopImage, startConversation, uploadProductImage, updateProduct, updateOrderTracking, fetchJtTracking, submitSellerApplication, fetchSellerApplications, approveSellerApplication, rejectSellerApplication, requestOrderCancellation, approveOrderCancellation, fetchApprovedSellers, updateUserStatus, checkSuspensionExpiry, replyToReview, deleteReview, updateProductAdminStatus, checkIfUserCanReview } from '@/services/firestoreService';
+import { fetchProvinces, fetchCities, fetchBarangays, LocationCode } from '@/services/locationService';
+import ChatAssistant from '@/components/ChatAssistant';
+import ShippingLabelModal from '@/components/ShippingLabelModal';
+import { HERO_COVER } from '@/assets/images';
+import { triggerShippingLabel } from '@/services/zapierService';
 
 // --- Types for App State ---
 interface UserState {

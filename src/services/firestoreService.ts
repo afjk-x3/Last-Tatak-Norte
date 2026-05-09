@@ -5,10 +5,10 @@
 
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
-import { db, storage, isFirebaseConfigured, auth } from '../firebaseConfig';
-import { Product, UserRole, UserProfile, Order, CartItem, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, Conversation, ChatMessage, TrackingEvent, Variation, SellerApplication, ShippingLabel } from '../types';
-import { PRODUCTS } from '../constants';
-import { zapierNewOrder } from './zapierService';
+import { db, storage, isFirebaseConfigured, auth } from '@/firebaseConfig';
+import { Product, UserRole, UserProfile, Order, CartItem, OrderStatus, Review, PaymentMethod, DeliveryMethod, Address, Conversation, ChatMessage, TrackingEvent, Variation, SellerApplication, ShippingLabel } from '@/types';
+import { PRODUCTS } from '@/constants';
+import { zapierNewOrder } from '@/services/zapierService';
 
 export enum OperationType {
   CREATE = 'create',

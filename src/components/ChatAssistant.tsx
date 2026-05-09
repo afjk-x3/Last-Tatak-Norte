@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, ChevronLeft, User } from 'lucide-react';
-import { Conversation, ChatMessage, UserProfile } from '../types';
-import { getUserConversations, sendMessage, subscribeToMessages } from '../services/firestoreService';
+import { Conversation, ChatMessage, UserProfile } from '@/types';
+import { getUserConversations, sendMessage, subscribeToMessages } from '@/services/firestoreService';
 
 interface ChatAssistantProps {
   user: { uid: string; name: string } | null;
